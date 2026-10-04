@@ -9,7 +9,7 @@
 <div class="snow" aria-hidden="true"></div>
 <header class="topbar">
   <div class="brand"><span class="brand-mark">✦</span><span>Telegram Market</span></div>
-  <nav><button class="nav active" data-view="home">Каталог</button><button class="nav" data-view="sell">Продать</button><button class="nav" data-view="orders">Мои сделки</button><button class="nav" data-view="purchase">Выдача</button></nav>
+  <nav><button class="nav active" data-view="home">Каталог</button><button class="nav" data-view="sell">Продать</button><button class="nav" data-view="orders">Мои сделки</button><button class="nav" data-view="purchase">Выдача</button><button class="nav" data-view="owner">Владелец</button></nav>
   <button class="login" id="loginBtn">Войти через Telegram</button>
 </header>
 <main id="app">
@@ -21,6 +21,17 @@
 <section id="catalog" class="grid"></section>
 <section id="sell" class="panel hidden"><div class="panel-head"><div><div class="eyebrow">SELL</div><h2>Выставить товар</h2></div></div><div class="form-grid"><label>Название<input id="sellTitle" placeholder="Например: @example"></label><label>Категория<select id="sellCategory"><option>Юзернейм</option><option>Канал</option><option>Группа</option><option>Бот</option><option>Другое</option></select></label><label>Цена в Telegram Stars<input id="sellPrice" type="number" min="1" placeholder="100"></label><label>Выдача<select id="sellDelivery"><option>Безопасная автоматизированная выдача</option><option>Ручная выдача</option></select></label><label class="wide">Описание<textarea id="sellDescription" placeholder="Опишите товар, ограничения и условия передачи"></textarea></label></div><label>Ваш Telegram username<input id="sellSeller" placeholder="@seller"></label><div class="notice">⚠️ Не загружайте OTP-коды, пароли 2FA или чужие учётные данные. Проверка владения и выдача будут построены без хранения таких секретов.</div><button class="primary" id="publishBtn">Опубликовать товар</button><div id="publishMessage" class="delivery-message hidden"></div></section>
 <section id="orders" class="panel hidden"><div class="empty">🔐 Войдите через Telegram, чтобы видеть сделки.</div></section>
+<section id="owner" class="owner-page hidden">
+  <div class="owner-head"><div><div class="eyebrow">OWNER PANEL</div><h2>Панель владельца</h2><p>Реальная статистика магазина из базы заказов.</p></div><button class="secondary" id="ownerRefresh">Обновить</button></div>
+  <div class="owner-stats">
+    <div class="owner-stat"><span>Продажи</span><b id="ownerSales">0</b></div>
+    <div class="owner-stat"><span>Заработано Stars</span><b id="ownerEarned">0 ⭐</b></div>
+    <div class="owner-stat"><span>Оплаченные заказы</span><b id="ownerPaid">0</b></div>
+    <div class="owner-stat"><span>Возвраты</span><b id="ownerRefunds">0</b><small id="ownerRefundStars">0 ⭐</small></div>
+    <div class="owner-stat accent"><span>Чистый доход</span><b id="ownerNet">0 ⭐</b></div>
+  </div>
+  <div class="owner-orders"><div class="panel-head"><div><div class="eyebrow">ORDERS</div><h3>Последние оплаченные заказы</h3></div></div><div id="ownerOrderList" class="owner-order-list"><div class="empty">Загрузка…</div></div></div>
+</section>
 <section id="purchase" class="purchase-page hidden">
   <div class="purchase-head"><div><div class="eyebrow">PURCHASE #—</div><h2>Товар приобретён</h2><p>Проверьте данные сделки и завершите безопасную выдачу.</p></div><span class="status-pill success">● Оплачено</span></div>
   <div class="purchase-layout">
