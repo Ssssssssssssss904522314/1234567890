@@ -1,6 +1,7 @@
 const express=require("express");
 const path=require("path");
 const db=require("./db");
+const owner=require("./owner-panel");
 const app=express();
 const PORT=process.env.PORT||10000;
 const BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||"";
@@ -18,6 +19,9 @@ async function tg(method,body){
 }
 
 app.get("/api/health",async(req,res)=>res.json({ok:true,service:"telegram-digital-market",database:!!db.pool,payments:!!BOT_TOKEN}));
+
+app.get("/api/owner/stats",async(req,res)=>{try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
+app.get("/api/owner/orders",async(req,res)=>{try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
 
 app.get("/api/listings",async(req,res)=>{
  try{res.json({items:await db.listings()})}catch(e){res.status(500).json({error:e.message})}
