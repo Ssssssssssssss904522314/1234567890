@@ -14,7 +14,25 @@ function view(v){
  document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
-document.querySelector("#loginBtn").addEventListener("click",()=>alert("Telegram Login подключим следующим этапом."));
+async function initAuth(){
+ try{
+  const r=await fetch("/api/auth/me");const j=await r.json();
+  const ownerNav=document.querySelector('.nav[data-view="owner"]');
+  if(ownerNav)ownerNav.classList.toggle("hidden",!j.isOwner);
+  const btn=document.querySelector("#loginBtn");
+  if(btn){
+   if(j.authenticated){
+    btn.textContent=j.isOwner?"Администратор":"Выйти";
+    btn.onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload()};
+   }else{
+    btn.textContent="Войти через Telegram";
+    btn.onclick=()=>location.href="/auth/login";
+   }
+  }
+  if(j.isOwner)loadOwnerPanel();
+ }catch(e){}
+}
+initAuth();
 async function buy(id){
  const p=products.find(x=>x.id===id);if(!p)return;
  try{
