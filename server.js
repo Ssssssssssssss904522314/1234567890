@@ -35,7 +35,8 @@ app.get("/api/auth/me",(req,res)=>{const u=getSession(req);res.json({authenticat
 app.post("/api/auth/logout",(req,res)=>{res.setHeader("Set-Cookie","market_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax");res.json({ok:true});});
 
 function getCookie(req,name){const parts=(req.headers.cookie||"").split(";");for(const p of parts){const x=p.trim();if(x.startsWith(name+"="))return decodeURIComponent(x.slice(name.length+1));}return "";
-function getSession(req){try{const raw=getCookie(req,"market_session");if(!raw||!BOT_TOKEN)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",BOT_TOKEN).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}
+}
+function getSession(req){try{const raw=getCookie(req,"market_session");if(!raw||!BOT_TOKEN)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",BOT_TOKEN).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}}
 function ownerAuth(req,res){const u=getSession(req);if(u&&u.username===OWNER_TELEGRAM_USERNAME)return null;return res.status(401).json({error:"Нет доступа к панели владельца"});}
 app.get("/api/owner/stats",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
 app.get("/api/owner/orders",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
