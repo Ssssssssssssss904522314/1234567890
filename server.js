@@ -7,6 +7,7 @@ const PORT=process.env.PORT||10000;
 const BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||"";
 const WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||"";
 const SITE_URL=process.env.MARKET_SITE_URL||"";
+const OWNER_PANEL_KEY=process.env.OWNER_PANEL_KEY||"";
 
 app.use(express.json({limit:"2mb"}));
 app.use(express.static(path.join(__dirname,"public")));
@@ -20,8 +21,9 @@ async function tg(method,body){
 
 app.get("/api/health",async(req,res)=>res.json({ok:true,service:"telegram-digital-market",database:!!db.pool,payments:!!BOT_TOKEN}));
 
-app.get("/api/owner/stats",async(req,res)=>{try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
-app.get("/api/owner/orders",async(req,res)=>{try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
+function ownerAuth(req,res){if(!OWNER_PANEL_KEY)return res.status(503).json({error:"OWNER_PANEL_KEY не настроен в Render"});if(req.get("x-owner-key")!==OWNER_PANEL_KEY)return res.status(401).json({error:"Неверный ключ владельца"});return null;}
+app.get("/api/owner/stats",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
+app.get("/api/owner/orders",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
 
 app.get("/api/listings",async(req,res)=>{
  try{res.json({items:await db.listings()})}catch(e){res.status(500).json({error:e.message})}
