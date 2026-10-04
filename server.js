@@ -63,7 +63,7 @@ app.post("/api/telegram/setup-webhook",async(req,res)=>{
  try{
   const base=SITE_URL.replace(/\/$/,"");
   const url=base+"/api/telegram/payment-webhook";
-  const result=await tg("setWebhook",{url,secret_token:WEBHOOK_SECRET||undefined,allowed_updates:["message"]});
+  const result=await tg("setWebhook",{url,secret_token:WEBHOOK_SECRET||undefined,allowed_updates:["message","pre_checkout_query"]});
   res.json({ok:true,result,url});
  }catch(e){res.status(500).json({error:e.message})}
 });
