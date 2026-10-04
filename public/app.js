@@ -10,7 +10,7 @@ async function loadListings(){try{const r=await fetch("/api/listings");const j=a
 loadListings();
 document.querySelector("#search").addEventListener("input",e=>{const q=e.target.value.toLowerCase().trim();render(products.filter(p=>(p.title+" "+p.category+" "+(p.description||"")).toLowerCase().includes(q)))});
 function view(v){
- ["#catalog",".toolbar",".hero","#sell","#orders","#purchase"].forEach(sel=>{const el=document.querySelector(sel);if(!el)return;const home=["#catalog",".toolbar",".hero"].includes(sel);el.classList.toggle("hidden",home?v!=="home":sel==="#sell"?v!=="sell":sel==="#orders"?v!=="orders":v!=="purchase")});
+ ["#catalog",".toolbar",".hero","#sell","#orders","#purchase","#owner"].forEach(sel=>{const el=document.querySelector(sel);if(!el)return;const home=["#catalog",".toolbar",".hero"].includes(sel);el.classList.toggle("hidden",home?v!=="home":sel==="#sell"?v!=="sell":sel==="#orders"?v!=="orders":v!=="purchase"&&v!=="owner")});
  document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
@@ -48,3 +48,28 @@ document.querySelector("#publishBtn")?.addEventListener("click",async()=>{
  const msg=document.querySelector("#publishMessage");msg.classList.remove("hidden");
  try{const r=await fetch("/api/listings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw new Error(j.error);msg.textContent="Объявление опубликовано и уже доступно в каталоге.";document.querySelectorAll("#sell input,#sell textarea").forEach(x=>x.value="");await loadListings()}catch(e){msg.textContent=e.message}
 });
+
+
+async function loadOwnerPanel(){
+ const key=localStorage.getItem("ownerPanelKey")||prompt("Введите ключ владельца магазина:");
+ if(!key)return;
+ localStorage.setItem("ownerPanelKey",key);
+ const headers={"x-owner-key":key};
+ try{
+  const [sr,or]=await Promise.all([fetch("/api/owner/stats",{headers}),fetch("/api/owner/orders",{headers})]);
+  const sj=await sr.json(),oj=await or.json();
+  if(!sr.ok)throw new Error(sj.error||"Нет доступа");
+  const s=sj.stats||{};
+  document.querySelector("#ownerSales").textContent=Number(s.sales||0);
+  document.querySelector("#ownerEarned").textContent=Number(s.earned_stars||0)+" ⭐";
+  document.querySelector("#ownerPaid").textContent=Number(s.paid_orders||0);
+  document.querySelector("#ownerRefunds").textContent=Number(s.refunds||0);
+  document.querySelector("#ownerRefundStars").textContent=Number(s.refunded_stars||0)+" ⭐";
+  document.querySelector("#ownerNet").textContent=Number(s.net_stars||0)+" ⭐";
+  const list=document.querySelector("#ownerOrderList");
+  const items=oj.items||[];
+  list.innerHTML=items.length?items.map(o=>`<div class="owner-order"><div><b>#${esc(o.id.slice(-8))}</b><span>${esc(o.seller_handle||"—")} · ${new Date(o.created_at).toLocaleString("ru-RU")}</span></div><strong>${Number(o.amount_stars||0)} ⭐</strong><em class="${o.status==="refunded"?"refund":"paid"}">${o.status==="refunded"?"Возврат":"Оплачено"}</em></div>`).join(""):'<div class="empty">Оплаченных заказов пока нет.</div>';
+ }catch(e){localStorage.removeItem("ownerPanelKey");document.querySelector("#ownerOrderList").innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+document.querySelector("#ownerRefresh")?.addEventListener("click",loadOwnerPanel);
+document.querySelector('.nav[data-view="owner"]')?.addEventListener("click",loadOwnerPanel);
