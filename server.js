@@ -8,7 +8,6 @@ const PORT=process.env.PORT||10000;
 const BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||"";
 const WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||"";
 const SITE_URL=process.env.MARKET_SITE_URL||"";
-const OWNER_PANEL_KEY=process.env.OWNER_PANEL_KEY||"";
 const OWNER_TELEGRAM_USERNAME=(process.env.OWNER_TELEGRAM_USERNAME||"wswkkk").replace(/^@/,"").toLowerCase();
 
 app.use(express.json({limit:"2mb"}));
@@ -27,7 +26,7 @@ app.get("/auth/telegram",(req,res)=>{if(!BOT_TOKEN)return res.status(503).send("
 app.get("/api/auth/me",(req,res)=>{const u=getSession(req);res.json({authenticated:!!u,user:u?{id:u.id,username:u.username,name:u.name}:null,isOwner:!!(u&&u.username===OWNER_TELEGRAM_USERNAME)});});
 app.post("/api/auth/logout",(req,res)=>{res.setHeader("Set-Cookie","market_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax");res.json({ok:true});});\n
 
-function getCookie(req,name){const parts=(req.headers.cookie||"").split(";");for(const p of parts){const x=p.trim();if(x.startsWith(name+"="))return decodeURIComponent(x.slice(name.length+1));}return "";}\nfunction getSession(req){try{const raw=getCookie(req,"market_session");if(!raw||!BOT_TOKEN)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",BOT_TOKEN).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}}\nfunction ownerAuth(req,res){const u=getSession(req);if(u&&u.username===OWNER_TELEGRAM_USERNAME)return null;if(OWNER_PANEL_KEY&&req.get("x-owner-key")===OWNER_PANEL_KEY)return null;return res.status(401).json({error:"Нет доступа к панели владельца"});}
+function getCookie(req,name){const parts=(req.headers.cookie||"").split(";");for(const p of parts){const x=p.trim();if(x.startsWith(name+"="))return decodeURIComponent(x.slice(name.length+1));}return "";}\nfunction getSession(req){try{const raw=getCookie(req,"market_session");if(!raw||!BOT_TOKEN)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",BOT_TOKEN).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}}\nfunction ownerAuth(req,res){const u=getSession(req);if(u&&u.username===OWNER_TELEGRAM_USERNAME)return null;return res.status(401).json({error:"Нет доступа к панели владельца"});}
 app.get("/api/owner/stats",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
 app.get("/api/owner/orders",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
 
