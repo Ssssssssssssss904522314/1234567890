@@ -9,7 +9,7 @@ function render(list=products){
         <div class="empty-icon">◇</div>
         <h3>Товаров пока нет</h3>
         <p>Здесь будут отображаться реальные объявления продавцов после публикации.</p>
-        <button class="primary" onclick="view("sell")">Выставить товар</button>
+        <button class="primary" onclick="view(&quot;sell&quot;)">Выставить товар</button>
       </div>`;
     return;
   }
