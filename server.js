@@ -56,6 +56,14 @@ app.get("/api/orders/:id",async(req,res)=>{
 app.post("/api/telegram/payment-webhook",async(req,res)=>{
  if(WEBHOOK_SECRET&&req.get("x-telegram-bot-api-secret-token")!==WEBHOOK_SECRET)return res.sendStatus(403);
  const u=req.body||{};
+ const pq=u.pre_checkout_query;
+ if(pq){
+  try{
+   const o=await db.byPayload(pq.invoice_payload);
+   const valid=o&&o.status==="pending"&&Number(o.amount_stars)===Number(pq.total_amount)&&pq.currency==="XTR";
+   await tg("answerPreCheckoutQuery",{pre_checkout_query_id:pq.id,ok:!!valid,...(!valid?{error_message:"Заказ недоступен или сумма счёта не совпадает."}:{})});
+  }catch(e){try{await tg("answerPreCheckoutQuery",{pre_checkout_query_id:pq.id,ok:false,error_message:"Не удалось проверить заказ."})}catch(_){} }
+ }
  const sp=u.message?.successful_payment;
  if(sp){
   const o=await db.markPaid(sp.invoice_payload,sp.telegram_payment_charge_id,u.message.from?.id);
