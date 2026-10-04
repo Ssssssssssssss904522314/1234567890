@@ -69,10 +69,8 @@ document.querySelector("#publishBtn")?.addEventListener("click",async()=>{
 
 
 async function loadOwnerPanel(){
- const key=localStorage.getItem("ownerPanelKey")||prompt("Введите ключ владельца магазина:");
- if(!key)return;
- localStorage.setItem("ownerPanelKey",key);
- const headers={"x-owner-key":key};
+ const key=localStorage.getItem("ownerPanelKey");
+ const headers=key?{"x-owner-key":key}:{};
  try{
   const [sr,or]=await Promise.all([fetch("/api/owner/stats",{headers}),fetch("/api/owner/orders",{headers})]);
   const sj=await sr.json(),oj=await or.json();
