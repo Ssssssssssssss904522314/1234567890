@@ -1,0 +1,52 @@
+const {Pool}=require("pg");
+const crypto=require("crypto");
+const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes("render.com")?{rejectUnauthorized:false}:undefined}):null;
+const memory={listings:[],orders:[]};
+function id(prefix){return prefix+"_"+crypto.randomBytes(10).toString("hex")}
+async function init(){
+ if(!pool)return console.warn("DATABASE_URL is not configured: using temporary memory storage");
+ await pool.query(`CREATE TABLE IF NOT EXISTS listings(
+ id text primary key,title text not null,category text not null,price_stars integer not null,
+ seller_handle text not null,description text default '',delivery_mode text default 'manual',
+ status text default 'active',created_at timestamptz default now()
+ );
+ CREATE TABLE IF NOT EXISTS orders(
+ id text primary key,listing_id text not null references listings(id),buyer_telegram_id text,
+ seller_handle text not null,amount_stars integer not null,payload text unique not null,
+ invoice_url text,status text default 'pending',telegram_charge_id text,
+ created_at timestamptz default now(),paid_at timestamptz
+ )`);
+}
+async function listings(){
+ if(!pool)return memory.listings.filter(x=>x.status==="active");
+ return (await pool.query("SELECT * FROM listings WHERE status='active' ORDER BY created_at DESC")).rows;
+}
+async function listing(idv){
+ if(!pool)return memory.listings.find(x=>x.id===idv&&x.status==="active");
+ return (await pool.query("SELECT * FROM listings WHERE id=$1 AND status='active'",[idv])).rows[0];
+}
+async function addListing(x){
+ const row={id:id("lst"),...x,status:"active",created_at:new Date().toISOString()};
+ if(!pool){memory.listings.push(row);return row}
+ return (await pool.query("INSERT INTO listings(id,title,category,price_stars,seller_handle,description,delivery_mode,status) VALUES($1,$2,$3,$4,$5,$6,$7,'active') RETURNING *",[row.id,x.title,x.category,x.price_stars,x.seller_handle,x.description||"",x.delivery_mode||"manual"])).rows[0];
+}
+async function createOrder(x){
+ const row={id:id("ord"),payload:id("pay"),...x,status:"pending",created_at:new Date().toISOString()};
+ if(!pool){memory.orders.push(row);return row}
+ return (await pool.query("INSERT INTO orders(id,listing_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,'pending') RETURNING *",[row.id,x.listing_id,x.seller_handle,x.amount_stars,row.payload])).rows[0];
+}
+async function order(idv){
+ if(!pool)return memory.orders.find(x=>x.id===idv);
+ return (await pool.query("SELECT * FROM orders WHERE id=$1",[idv])).rows[0];
+}
+async function byPayload(payload){
+ if(!pool)return memory.orders.find(x=>x.payload===payload);
+ return (await pool.query("SELECT * FROM orders WHERE payload=$1",[payload])).rows[0];
+}
+async function markPaid(payload,chargeId,buyerId){
+ if(!pool){
+  const o=memory.orders.find(x=>x.payload===payload); if(o){o.status="paid";o.telegram_charge_id=chargeId;o.buyer_telegram_id=String(buyerId||"");o.paid_at=new Date().toISOString()} return o;
+ }
+ return (await pool.query("UPDATE orders SET status='paid',telegram_charge_id=$2,buyer_telegram_id=$3,paid_at=now() WHERE payload=$1 RETURNING *",[payload,chargeId,String(buyerId||"")])).rows[0];
+}
+module.exports={pool,init,listings,listing,addListing,createOrder,order,byPayload,markPaid};
