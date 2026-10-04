@@ -9,7 +9,7 @@
 <div class="snow" aria-hidden="true"></div>
 <header class="topbar">
   <div class="brand"><span class="brand-mark">✦</span><span>Telegram Market</span></div>
-  <nav><button class="nav active" data-view="home">Каталог</button><button class="nav" data-view="sell">Продать</button><button class="nav" data-view="orders">Мои сделки</button></nav>
+  <nav><button class="nav active" data-view="home">Каталог</button><button class="nav" data-view="sell">Продать</button><button class="nav" data-view="orders">Мои сделки</button><button class="nav" data-view="purchase">Выдача</button></nav>
   <button class="login" id="loginBtn">Войти через Telegram</button>
 </header>
 <main id="app">
@@ -21,6 +21,36 @@
 <section id="catalog" class="grid"></section>
 <section id="sell" class="panel hidden"><div class="panel-head"><div><div class="eyebrow">SELL</div><h2>Выставить товар</h2></div></div><div class="form-grid"><label>Название<input placeholder="Например: @example"></label><label>Категория<select><option>Юзернейм</option><option>Канал</option><option>Группа</option><option>Бот</option><option>Другое</option></select></label><label>Цена<input type="number" placeholder="0"></label><label>Выдача<select><option>Безопасная автоматизированная выдача</option><option>Ручная выдача</option></select></label><label class="wide">Описание<textarea placeholder="Опишите товар, ограничения и условия передачи"></textarea></label></div><div class="notice">⚠️ Не загружайте OTP-коды, пароли 2FA или чужие учётные данные. Проверка владения и выдача будут построены без хранения таких секретов.</div><button class="primary">Отправить на модерацию</button></section>
 <section id="orders" class="panel hidden"><div class="empty">🔐 Войдите через Telegram, чтобы видеть сделки.</div></section>
+<section id="purchase" class="purchase-page hidden">
+  <div class="purchase-head"><div><div class="eyebrow">PURCHASE #—</div><h2>Товар приобретён</h2><p>Проверьте данные сделки и завершите безопасную выдачу.</p></div><span class="status-pill success">● Оплачено</span></div>
+  <div class="purchase-layout">
+    <div class="account-card">
+      <div class="account-avatar">JD</div>
+      <div class="account-main"><h3>Данные приобретённого товара</h3><span class="safe-label">✓ Данные без секретов входа</span></div>
+      <div class="account-data">
+        <div><span>Название</span><b>Товар продавца</b></div>
+        <div><span>Категория</span><b>Цифровой актив</b></div>
+        <div><span>Продавец</span><b>@seller</b></div>
+        <div><span>Статус ограничений</span><b class="good">Без заявленных ограничений</b></div>
+        <div><span>2FA</span><b>Включена</b></div>
+        <div><span>Проверка</span><b>Выполнена</b></div>
+      </div>
+      <div class="secure-note">🔒 Пароли 2FA, Telegram OTP и файлы сессий не сохраняются и не передаются через сайт.</div>
+    </div>
+    <div class="delivery-card">
+      <div class="step done"><i>✓</i><div><b>Оплата</b><span>Средства зарезервированы</span></div></div>
+      <div class="step current"><i>2</i><div><b>Выдача</b><span>Ожидается подтверждение продавца</span></div></div>
+      <div class="step"><i>3</i><div><b>Получено</b><span>Покупатель подтверждает получение</span></div></div>
+      <div class="step"><i>4</i><div><b>Завершено</b><span>Сделка закрыта, доступен отзыв</span></div></div>
+      <div class="delivery-actions">
+        <button class="primary" id="receiveBtn">Получить данные товара</button>
+        <button class="secondary" id="sellerChatBtn">Открыть чат продавца</button>
+        <button class="danger" id="disputeBtn">Открыть спор</button>
+      </div>
+      <div id="deliveryMessage" class="delivery-message hidden"></div>
+    </div>
+  </div>
+</section>
 </main>
 <footer>Telegram Market · Безопасная торговая площадка цифровых активов</footer>
 <script src="/app.js"></script>
