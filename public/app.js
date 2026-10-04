@@ -31,7 +31,7 @@ document.querySelector("#search").addEventListener("input",e=>{
 });
 
 function view(v){
-  ["catalog",".toolbar",".hero","#sell","#orders","#purchase"].forEach(sel=>{
+  ["#catalog",".toolbar",".hero","#sell","#orders","#purchase"].forEach(sel=>{
     const el=document.querySelector(sel);
     if(el) el.classList.toggle("hidden", (sel==="#catalog"||sel===".toolbar"||sel===".hero") ? v!=="home" : sel==="#sell" ? v!=="sell" : sel==="#orders" ? v!=="orders" : v!=="purchase");
   });
