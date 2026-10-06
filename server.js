@@ -10,6 +10,8 @@ const WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||"";
 const SITE_URL=process.env.MARKET_SITE_URL||"";
 const SESSION_SECRET=process.env.MARKET_SESSION_SECRET||crypto.randomBytes(32).toString("hex");
 const OWNER_TELEGRAM_USERNAME=(process.env.OWNER_TELEGRAM_USERNAME||"wswkkk").replace(/^@/,"").toLowerCase();
+const ADMIN_PASSWORD_HASH=process.env.ADMIN_PANEL_PASSWORD_HASH||"0827354a35fa25df0c90fbfa1e5fc4991c73d75de12b3c175a0db6af88c404da720233e42e8019e30e2725e6be26341deb2c7bd90ba8dd6dd4914680e36f66a8";
+const ADMIN_PASSWORD_SALT=process.env.ADMIN_PANEL_PASSWORD_SALT||"market-admin-2026";
 
 app.use(express.json({limit:"2mb"}));
 app.use(express.static(path.join(__dirname,"public")));
@@ -44,13 +46,24 @@ app.post("/api/auth/login",async(req,res)=>{
  }catch(e){res.status(500).json({error:e.message})}
 });
 app.get("/auth/login",(req,res)=>res.redirect("/"));
-app.get("/api/auth/me",(req,res)=>{const u=getSession(req);res.json({authenticated:!!u,user:u?{id:u.id,username:u.username,name:u.name}:null,isOwner:!!(u&&u.name.toLowerCase()===OWNER_TELEGRAM_USERNAME)});});
+function setAdminSession(res){const payload=Buffer.from(JSON.stringify({admin:true,exp:Date.now()+86400000})).toString("base64url");const sig=crypto.createHmac("sha256",SESSION_SECRET).update(payload).digest("base64url");res.setHeader("Set-Cookie","admin_session="+payload+"."+sig+"; Path=/; Max-Age=86400; HttpOnly; Secure; SameSite=Lax");}
+function getAdminSession(req){try{const raw=getCookie(req,"admin_session");if(!raw)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",SESSION_SECRET).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const x=JSON.parse(Buffer.from(a[0],"base64url").toString());return x.admin&&x.exp>Date.now()?x:null}catch(e){return null}}
+function adminAuth(req,res){if(getAdminSession(req))return null;return res.status(401).json({error:"Введите пароль панели владельца"});}
+app.post("/api/admin/login",(req,res)=>{
+ const password=String(req.body?.password||"");
+ const hash=crypto.scryptSync(password,ADMIN_PASSWORD_SALT,64).toString("hex");
+ if(hash!==ADMIN_PASSWORD_HASH)return res.status(401).json({error:"Неверный пароль"});
+ setAdminSession(res);res.json({ok:true});
+});
+app.post("/api/admin/logout",(req,res)=>{res.setHeader("Set-Cookie","admin_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax");res.json({ok:true})});
+app.get("/api/admin/me",(req,res)=>res.json({authenticated:!!getAdminSession(req)}));
+app.get("/api/auth/me",(req,res)=>{const u=getSession(req);res.json({authenticated:!!u,user:u?{id:u.id,username:u.username,name:u.name}:null,isOwner:false,isAdmin:!!getAdminSession(req)});});
 app.post("/api/auth/logout",(req,res)=>{res.setHeader("Set-Cookie","market_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax");res.json({ok:true});});
 
 function getCookie(req,name){const parts=(req.headers.cookie||"").split(";");for(const p of parts){const x=p.trim();if(x.startsWith(name+"="))return decodeURIComponent(x.slice(name.length+1));}return "";
 }
 function getSession(req){try{const raw=getCookie(req,"market_session");if(!raw)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",SESSION_SECRET).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}}
-function ownerAuth(req,res){const u=getSession(req);if(u&&u.name.toLowerCase()===OWNER_TELEGRAM_USERNAME)return null;return res.status(401).json({error:"Нет доступа к панели владельца"});}
+function ownerAuth(req,res){return adminAuth(req,res)}
 app.get("/api/owner/stats",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
 app.get("/api/owner/orders",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
 
@@ -104,7 +117,7 @@ app.post("/api/orders/:id/cancel",async(req,res)=>{
  try{const o=await db.cancelOrder(req.params.id,u.id);if(!o)return res.status(400).json({error:"Заказ уже оплачен или его нельзя отменить"});res.json({ok:true,order:o})}catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/orders/:id/refund",async(req,res)=>{
- const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите в Market"});
  const reason=String(req.body?.reason||"").slice(0,1000);
  try{const o=await db.requestRefund(req.params.id,u.id,reason);if(!o)return res.status(400).json({error:"Для этой сделки сейчас нельзя запросить возврат"});res.json({ok:true,order:o,message:"Запрос на возврат отправлен владельцу маркета"})}catch(e){res.status(500).json({error:e.message})}
 });
