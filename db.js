@@ -19,7 +19,19 @@ async function init(){
  id text primary key,listing_id text not null references listings(id),buyer_telegram_id text,
  seller_handle text not null,amount_stars integer not null,payload text unique not null,
  invoice_url text,status text default 'pending',telegram_charge_id text,
- created_at timestamptz default now(),paid_at timestamptz
+ created_at timestamptz default now(),paid_at timestamptz,
+ cancelled_at timestamptz,refund_requested_at timestamptz,refund_reason text,
+ complaint_reason text,complaint_status text default 'none',complaint_created_at timestamptz,
+ resolved_at timestamptz,refunded_at timestamptz
+ );
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at timestamptz;
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at timestamptz;
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_reason text;
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_reason text;
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_status text default 'none';
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_created_at timestamptz;
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS resolved_at timestamptz;
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at timestamptz
  )`);
 }
 async function listings(){
@@ -38,7 +50,7 @@ async function addListing(x){
 async function createOrder(x){
  const row={id:id("ord"),payload:id("pay"),...x,status:"pending",created_at:new Date().toISOString()};
  if(!pool){memory.orders.push(row);return row}
- return (await pool.query("INSERT INTO orders(id,listing_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,'pending') RETURNING *",[row.id,x.listing_id,x.seller_handle,x.amount_stars,row.payload])).rows[0];
+ return (await pool.query("INSERT INTO orders(id,listing_id,buyer_telegram_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING *",[row.id,x.listing_id,String(x.buyer_telegram_id||""),x.seller_handle,x.amount_stars,row.payload])).rows[0];
 }
 async function order(idv){
  if(!pool)return memory.orders.find(x=>x.id===idv);
@@ -47,6 +59,26 @@ async function order(idv){
 async function byPayload(payload){
  if(!pool)return memory.orders.find(x=>x.payload===payload);
  return (await pool.query("SELECT * FROM orders WHERE payload=$1",[payload])).rows[0];
+}
+async function cancelOrder(idv,buyerId){
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&o.status==="pending"){o.status="cancelled";o.cancelled_at=new Date().toISOString();}return o}
+ return (await pool.query("UPDATE orders SET status='cancelled',cancelled_at=now() WHERE id=$1 AND buyer_telegram_id=$2 AND status='pending' RETURNING *",[idv,String(buyerId)])).rows[0];
+}
+async function requestRefund(idv,buyerId,reason){
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&["paid","delivery","completed","disputed"].includes(o.status)){o.status="refund_requested";o.refund_requested_at=new Date().toISOString();o.refund_reason=reason||"";}return o}
+ return (await pool.query("UPDATE orders SET status='refund_requested',refund_requested_at=now(),refund_reason=$3 WHERE id=$1 AND buyer_telegram_id=$2 AND status IN ('paid','delivery','completed','disputed') RETURNING *",[idv,String(buyerId),reason||""])).rows[0];
+}
+async function openComplaint(idv,userId,reason){
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&(String(x.buyer_telegram_id)===String(userId)));if(o&&!["cancelled","refunded"].includes(o.status)){o.status="disputed";o.complaint_status="open";o.complaint_created_at=new Date().toISOString();o.complaint_reason=reason||"";}return o}
+ return (await pool.query("UPDATE orders SET status='disputed',complaint_status='open',complaint_created_at=now(),complaint_reason=$2 WHERE id=$1 AND buyer_telegram_id=$3 AND status NOT IN ('cancelled','refunded') RETURNING *",[idv,reason||"",String(userId)])).rows[0];
+}
+async function completeOrder(idv,buyerId){
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&["paid","delivery"].includes(o.status)){o.status="completed";o.resolved_at=new Date().toISOString();}return o}
+ return (await pool.query("UPDATE orders SET status='completed',resolved_at=now() WHERE id=$1 AND buyer_telegram_id=$2 AND status IN ('paid','delivery') RETURNING *",[idv,String(buyerId)])).rows[0];
+}
+async function markRefunded(idv){
+ if(!pool){const o=memory.orders.find(x=>x.id===idv);if(o){o.status="refunded";o.refunded_at=new Date().toISOString();o.complaint_status="resolved";}return o}
+ return (await pool.query("UPDATE orders SET status='refunded',refunded_at=now(),resolved_at=now(),complaint_status='resolved' WHERE id=$1 AND status IN ('refund_requested','disputed','paid','delivery','completed') RETURNING *",[idv])).rows[0];
 }
 async function markPaid(payload,chargeId,buyerId){
  if(!pool){
@@ -59,4 +91,4 @@ async function createVerification(){const nonce=id("verify");if(!pool){const row
 async function getVerification(nonce){if(!pool)return memory.verifications.find(x=>x.nonce===nonce);return (await pool.query("SELECT * FROM account_verifications WHERE nonce=$1",[nonce])).rows[0]}
 async function completeVerification(nonce,userId){if(!pool){const row=memory.verifications.find(x=>x.nonce===nonce);if(row){row.telegram_user_id=String(userId);row.status="verified";row.verified_at=new Date().toISOString()}return row}return (await pool.query("UPDATE account_verifications SET telegram_user_id=$2,status='verified',verified_at=now() WHERE nonce=$1 AND status='pending' RETURNING *",[nonce,String(userId)])).rows[0]}
 async function purgeVerifications(){if(pool)await pool.query("DELETE FROM account_verifications WHERE created_at < now()-interval '15 minutes'")}
-module.exports={pool,init,listings,listing,addListing,createOrder,order,byPayload,markPaid,createVerification,getVerification,completeVerification,purgeVerifications};
+module.exports={pool,init,listings,listing,addListing,createOrder,order,byPayload,markPaid,cancelOrder,requestRefund,openComplaint,completeOrder,markRefunded,createVerification,getVerification,completeVerification,purgeVerifications};
