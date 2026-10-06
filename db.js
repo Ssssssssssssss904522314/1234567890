@@ -1,14 +1,19 @@
 const {Pool}=require("pg");
 const crypto=require("crypto");
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes("render.com")?{rejectUnauthorized:false}:undefined}):null;
-const memory={listings:[],orders:[]};
+const memory={listings:[],orders:[],verifications:[]};
 function id(prefix){return prefix+"_"+crypto.randomBytes(10).toString("hex")}
 async function init(){
  if(!pool)return console.warn("DATABASE_URL is not configured: using temporary memory storage");
  await pool.query(`CREATE TABLE IF NOT EXISTS listings(
  id text primary key,title text not null,category text not null,price_stars integer not null,
  seller_handle text not null,description text default '',delivery_mode text default 'manual',
- status text default 'active',created_at timestamptz default now()
+ status text default 'active',created_at timestamptz default now(),verified_telegram_id text,verified_at timestamptz
+ );
+ ALTER TABLE listings ADD COLUMN IF NOT EXISTS verified_telegram_id text;
+ ALTER TABLE listings ADD COLUMN IF NOT EXISTS verified_at timestamptz;
+ CREATE TABLE IF NOT EXISTS account_verifications(
+ nonce text primary key,telegram_user_id text,status text default 'pending',created_at timestamptz default now(),verified_at timestamptz
  );
  CREATE TABLE IF NOT EXISTS orders(
  id text primary key,listing_id text not null references listings(id),buyer_telegram_id text,
@@ -28,7 +33,7 @@ async function listing(idv){
 async function addListing(x){
  const row={id:id("lst"),...x,status:"active",created_at:new Date().toISOString()};
  if(!pool){memory.listings.push(row);return row}
- return (await pool.query("INSERT INTO listings(id,title,category,price_stars,seller_handle,description,delivery_mode,status) VALUES($1,$2,$3,$4,$5,$6,$7,'active') RETURNING *",[row.id,x.title,x.category,x.price_stars,x.seller_handle,x.description||"",x.delivery_mode||"manual"])).rows[0];
+ return (await pool.query("INSERT INTO listings(id,title,category,price_stars,seller_handle,description,delivery_mode,status,verified_telegram_id,verified_at) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9) RETURNING *",[row.id,x.title,x.category,x.price_stars,x.seller_handle,x.description||"",x.delivery_mode||"manual",x.verified_telegram_id||null,x.verified_at||null])).rows[0];
 }
 async function createOrder(x){
  const row={id:id("ord"),payload:id("pay"),...x,status:"pending",created_at:new Date().toISOString()};
@@ -49,4 +54,9 @@ async function markPaid(payload,chargeId,buyerId){
  }
  return (await pool.query("UPDATE orders SET status='paid',telegram_charge_id=$2,buyer_telegram_id=$3,paid_at=now() WHERE payload=$1 RETURNING *",[payload,chargeId,String(buyerId||"")])).rows[0];
 }
-module.exports={pool,init,listings,listing,addListing,createOrder,order,byPayload,markPaid};
+
+async function createVerification(){const nonce=id("verify");if(!pool){const row={nonce,status:"pending",created_at:new Date().toISOString()};memory.verifications.push(row);return row}return (await pool.query("INSERT INTO account_verifications(nonce,status) VALUES($1,'pending') RETURNING *",[nonce])).rows[0]}
+async function getVerification(nonce){if(!pool)return memory.verifications.find(x=>x.nonce===nonce);return (await pool.query("SELECT * FROM account_verifications WHERE nonce=$1",[nonce])).rows[0]}
+async function completeVerification(nonce,userId){if(!pool){const row=memory.verifications.find(x=>x.nonce===nonce);if(row){row.telegram_user_id=String(userId);row.status="verified";row.verified_at=new Date().toISOString()}return row}return (await pool.query("UPDATE account_verifications SET telegram_user_id=$2,status='verified',verified_at=now() WHERE nonce=$1 AND status='pending' RETURNING *",[nonce,String(userId)])).rows[0]}
+async function purgeVerifications(){if(pool)await pool.query("DELETE FROM account_verifications WHERE created_at < now()-interval '15 minutes'")}
+module.exports={pool,init,listings,listing,addListing,createOrder,order,byPayload,markPaid,createVerification,getVerification,completeVerification,purgeVerifications};
