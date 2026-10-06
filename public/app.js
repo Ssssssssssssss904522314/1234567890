@@ -29,7 +29,7 @@ function view(v){
  if(v==="chats")loadChats();
  if(v==="owner")loadOwnerPanel();
 }
-document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
+document.querySelectorAll("[data-view]").forEach(x=>{if(x.dataset.view==="owner")return;x.addEventListener("click",()=>view(x.dataset.view))});
 let currentUser=null;
 let authMode="login";
 const authModal=document.querySelector("#authModal"),authTitle=document.querySelector("#authTitle"),authSubtitle=document.querySelector("#authSubtitle"),authName=document.querySelector("#authName"),authPassword=document.querySelector("#authPassword"),authSubmit=document.querySelector("#authSubmit"),authSwitch=document.querySelector("#authSwitch"),authMessage=document.querySelector("#authMessage");
