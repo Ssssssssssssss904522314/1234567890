@@ -31,8 +31,8 @@ async function init(){
  ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_status text default 'none';
  ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_created_at timestamptz;
  ALTER TABLE orders ADD COLUMN IF NOT EXISTS resolved_at timestamptz;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at timestamptz
- )`);
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at timestamptz;
+`);
 }
 async function listings(){
  if(!pool)return memory.listings.filter(x=>x.status==="active");
