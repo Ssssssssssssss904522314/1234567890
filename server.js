@@ -73,20 +73,55 @@ app.post("/api/listings",async(req,res)=>{
 });
 
 app.post("/api/orders",async(req,res)=>{
+ const u=getSession(req);
+ if(!u)return res.status(401).json({error:"Войдите через Telegram, чтобы создать и управлять сделкой"});
  const listing=await db.listing(req.body?.listing_id);
  if(!listing)return res.status(404).json({error:"Товар не найден"});
  if(!BOT_TOKEN)return res.status(503).json({error:"Платежи не настроены: добавьте TELEGRAM_MARKET_BOT_TOKEN в Render"});
  try{
-  const order=await db.createOrder({listing_id:listing.id,seller_handle:listing.seller_handle,amount_stars:listing.price_stars});
+  const order=await db.createOrder({listing_id:listing.id,buyer_telegram_id:String(u.id),seller_handle:listing.seller_handle,amount_stars:listing.price_stars});
   const invoice=await tg("createInvoiceLink",{title:listing.title.slice(0,32),description:(listing.description||"Цифровой товар").slice(0,255),payload:order.payload,currency:"XTR",prices:[{label:listing.title.slice(0,32),amount:listing.price_stars}],start_parameter:"order_"+order.id});
   if(db.pool) await db.pool.query("UPDATE orders SET invoice_url=$2 WHERE id=$1",[order.id,invoice]); else order.invoice_url=invoice;
   res.json({order_id:order.id,invoice_url:invoice,status:"pending"});
  }catch(e){res.status(500).json({error:e.message})}
 });
 
+app.post("/api/orders/:id/cancel",async(req,res)=>{
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
+ try{const o=await db.cancelOrder(req.params.id,u.id);if(!o)return res.status(400).json({error:"Заказ уже оплачен или его нельзя отменить"});res.json({ok:true,order:o})}catch(e){res.status(500).json({error:e.message})}
+});
+app.post("/api/orders/:id/refund",async(req,res)=>{
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
+ const reason=String(req.body?.reason||"").slice(0,1000);
+ try{const o=await db.requestRefund(req.params.id,u.id,reason);if(!o)return res.status(400).json({error:"Для этой сделки сейчас нельзя запросить возврат"});res.json({ok:true,order:o,message:"Запрос на возврат отправлен владельцу маркета"})}catch(e){res.status(500).json({error:e.message})}
+});
+app.post("/api/orders/:id/complaint",async(req,res)=>{
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
+ const reason=String(req.body?.reason||"").slice(0,2000);
+ if(!reason)return res.status(400).json({error:"Укажите причину жалобы"});
+ try{const o=await db.openComplaint(req.params.id,u.id,reason);if(!o)return res.status(400).json({error:"Жалобу по этой сделке открыть нельзя"});res.json({ok:true,order:o,message:"Жалоба передана на рассмотрение"})}catch(e){res.status(500).json({error:e.message})}
+});
+app.post("/api/orders/:id/complete",async(req,res)=>{
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
+ try{const o=await db.completeOrder(req.params.id,u.id);if(!o)return res.status(400).json({error:"Заказ нельзя завершить на текущем этапе"});res.json({ok:true,order:o})}catch(e){res.status(500).json({error:e.message})}
+});
+app.post("/api/owner/orders/:id/refund",async(req,res)=>{
+ if(ownerAuth(req,res))return;
+ try{
+  const o=await db.order(req.params.id);
+  if(!o)return res.status(404).json({error:"Заказ не найден"});
+  if(!o.buyer_telegram_id||!o.telegram_charge_id)return res.status(400).json({error:"У заказа нет данных для возврата Stars"});
+  if(o.status==="refunded")return res.status(400).json({error:"Заказ уже возвращён"});
+  await tg("refundStarPayment",{user_id:Number(o.buyer_telegram_id),telegram_payment_charge_id:o.telegram_charge_id});
+  const updated=await db.markRefunded(o.id);
+  res.json({ok:true,order:updated});
+ }catch(e){res.status(500).json({error:e.message})}
+});
 app.get("/api/orders/:id",async(req,res)=>{
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
  const o=await db.order(req.params.id);
  if(!o)return res.status(404).json({error:"Заказ не найден"});
+ if(String(o.buyer_telegram_id)!==String(u.id)&&u.username!==OWNER_TELEGRAM_USERNAME)return res.status(403).json({error:"Нет доступа к этой сделке"});
  res.json({order:o});
 });
 
