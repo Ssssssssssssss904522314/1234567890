@@ -1,12 +1,12 @@
 const {Pool}=require("pg");
 const crypto=require("crypto");
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes("render.com")?{rejectUnauthorized:false}:undefined}):null;
-const memory={listings:[],orders:[],verifications:[]};
+const memory={listings:[],orders:[],verifications:[],users:[]};
 function id(prefix){return prefix+"_"+crypto.randomBytes(10).toString("hex")}
 async function init(){
  if(!pool)return console.warn("DATABASE_URL is not configured: using temporary memory storage");
  const statements=[
-  `CREATE TABLE IF NOT EXISTS listings(
+  `CREATE TABLE IF NOT EXISTS users(\n   id text primary key,name text unique not null,password_hash text not null,created_at timestamptz default now()\n  )`,\n  `CREATE TABLE IF NOT EXISTS listings(
    id text primary key,title text not null,category text not null,price_stars integer not null,
    seller_handle text not null,description text default '',delivery_mode text default 'manual',
    status text default 'active',created_at timestamptz default now(),verified_telegram_id text,verified_at timestamptz
@@ -18,7 +18,7 @@ async function init(){
    created_at timestamptz default now(),verified_at timestamptz
   )`,
   `CREATE TABLE IF NOT EXISTS orders(
-   id text primary key,listing_id text not null references listings(id),buyer_telegram_id text,
+   id text primary key,listing_id text not null references listings(id),buyer_user_id text,buyer_telegram_id text,
    seller_handle text not null,amount_stars integer not null,payload text unique not null,
    invoice_url text,status text default 'pending',telegram_charge_id text,
    created_at timestamptz default now(),paid_at timestamptz,
@@ -26,7 +26,7 @@ async function init(){
    complaint_reason text,complaint_status text default 'none',complaint_created_at timestamptz,
    resolved_at timestamptz,refunded_at timestamptz
   )`,
-  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_telegram_id text`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_user_id text`,\n  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_telegram_id text`,
   `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at timestamptz`,
   `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at timestamptz`,
   `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_reason text`,
@@ -52,10 +52,10 @@ async function addListing(x){
  if(!pool){memory.listings.push(row);return row}
  return (await pool.query("INSERT INTO listings(id,title,category,price_stars,seller_handle,description,delivery_mode,status,verified_telegram_id,verified_at) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9) RETURNING *",[row.id,x.title,x.category,x.price_stars,x.seller_handle,x.description||"",x.delivery_mode||"manual",x.verified_telegram_id||null,x.verified_at||null])).rows[0];
 }
-async function createOrder(x){
+async function createUser(x){const row={id:id("usr"),...x,created_at:new Date().toISOString()};if(!pool){memory.users.push(row);return row}return (await pool.query("INSERT INTO users(id,name,password_hash) VALUES($1,$2,$3) RETURNING id,name,created_at",[row.id,x.name,x.password_hash])).rows[0]}\nasync function findUserByName(name){if(!pool)return memory.users.find(x=>x.name.toLowerCase()===String(name).toLowerCase());return (await pool.query("SELECT * FROM users WHERE lower(name)=lower($1)",[name])).rows[0]}\n\nasync function createOrder(x){
  const row={id:id("ord"),payload:id("pay"),...x,status:"pending",created_at:new Date().toISOString()};
  if(!pool){memory.orders.push(row);return row}
- return (await pool.query("INSERT INTO orders(id,listing_id,buyer_telegram_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING *",[row.id,x.listing_id,String(x.buyer_telegram_id||""),x.seller_handle,x.amount_stars,row.payload])).rows[0];
+ return (await pool.query("INSERT INTO orders(id,listing_id,buyer_user_id,buyer_telegram_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING *",[row.id,x.listing_id,String(x.buyer_user_id||""),String(x.buyer_telegram_id||""),x.seller_handle,x.amount_stars,row.payload])).rows[0];
 }
 async function order(idv){
  if(!pool)return memory.orders.find(x=>x.id===idv);
@@ -67,19 +67,19 @@ async function byPayload(payload){
 }
 async function cancelOrder(idv,buyerId){
  if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&o.status==="pending"){o.status="cancelled";o.cancelled_at=new Date().toISOString();}return o}
- return (await pool.query("UPDATE orders SET status='cancelled',cancelled_at=now() WHERE id=$1 AND buyer_telegram_id=$2 AND status='pending' RETURNING *",[idv,String(buyerId)])).rows[0];
+ return (await pool.query("UPDATE orders SET status='cancelled',cancelled_at=now() WHERE id=$1 AND buyer_user_id=$2 AND status='pending' RETURNING *",[idv,String(buyerId)])).rows[0];
 }
 async function requestRefund(idv,buyerId,reason){
  if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&["paid","delivery","completed","disputed"].includes(o.status)){o.status="refund_requested";o.refund_requested_at=new Date().toISOString();o.refund_reason=reason||"";}return o}
- return (await pool.query("UPDATE orders SET status='refund_requested',refund_requested_at=now(),refund_reason=$3 WHERE id=$1 AND buyer_telegram_id=$2 AND status IN ('paid','delivery','completed','disputed') RETURNING *",[idv,String(buyerId),reason||""])).rows[0];
+ return (await pool.query("UPDATE orders SET status='refund_requested',refund_requested_at=now(),refund_reason=$3 WHERE id=$1 AND buyer_user_id=$2 AND status IN ('paid','delivery','completed','disputed') RETURNING *",[idv,String(buyerId),reason||""])).rows[0];
 }
 async function openComplaint(idv,userId,reason){
  if(!pool){const o=memory.orders.find(x=>x.id===idv&&(String(x.buyer_telegram_id)===String(userId)));if(o&&!["cancelled","refunded"].includes(o.status)){o.status="disputed";o.complaint_status="open";o.complaint_created_at=new Date().toISOString();o.complaint_reason=reason||"";}return o}
- return (await pool.query("UPDATE orders SET status='disputed',complaint_status='open',complaint_created_at=now(),complaint_reason=$2 WHERE id=$1 AND buyer_telegram_id=$3 AND status NOT IN ('cancelled','refunded') RETURNING *",[idv,reason||"",String(userId)])).rows[0];
+ return (await pool.query("UPDATE orders SET status='disputed',complaint_status='open',complaint_created_at=now(),complaint_reason=$2 WHERE id=$1 AND buyer_user_id=$3 AND status NOT IN ('cancelled','refunded') RETURNING *",[idv,reason||"",String(userId)])).rows[0];
 }
 async function completeOrder(idv,buyerId){
  if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&["paid","delivery"].includes(o.status)){o.status="completed";o.resolved_at=new Date().toISOString();}return o}
- return (await pool.query("UPDATE orders SET status='completed',resolved_at=now() WHERE id=$1 AND buyer_telegram_id=$2 AND status IN ('paid','delivery') RETURNING *",[idv,String(buyerId)])).rows[0];
+ return (await pool.query("UPDATE orders SET status='completed',resolved_at=now() WHERE id=$1 AND buyer_user_id=$2 AND status IN ('paid','delivery') RETURNING *",[idv,String(buyerId)])).rows[0];
 }
 async function markRefunded(idv){
  if(!pool){const o=memory.orders.find(x=>x.id===idv);if(o){o.status="refunded";o.refunded_at=new Date().toISOString();o.complaint_status="resolved";}return o}
@@ -96,4 +96,4 @@ async function createVerification(){const nonce=id("verify");if(!pool){const row
 async function getVerification(nonce){if(!pool)return memory.verifications.find(x=>x.nonce===nonce);return (await pool.query("SELECT * FROM account_verifications WHERE nonce=$1",[nonce])).rows[0]}
 async function completeVerification(nonce,userId){if(!pool){const row=memory.verifications.find(x=>x.nonce===nonce);if(row){row.telegram_user_id=String(userId);row.status="verified";row.verified_at=new Date().toISOString()}return row}return (await pool.query("UPDATE account_verifications SET telegram_user_id=$2,status='verified',verified_at=now() WHERE nonce=$1 AND status='pending' RETURNING *",[nonce,String(userId)])).rows[0]}
 async function purgeVerifications(){if(pool)await pool.query("DELETE FROM account_verifications WHERE created_at < now()-interval '15 minutes'")}
-module.exports={pool,init,listings,listing,addListing,createOrder,order,byPayload,markPaid,cancelOrder,requestRefund,openComplaint,completeOrder,markRefunded,createVerification,getVerification,completeVerification,purgeVerifications};
+module.exports={pool,init,createUser,findUserByName,listings,listing,addListing,createOrder,order,byPayload,markPaid,cancelOrder,requestRefund,openComplaint,completeOrder,markRefunded,createVerification,getVerification,completeVerification,purgeVerifications};
