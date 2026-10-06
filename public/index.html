@@ -25,6 +25,17 @@
 </div>
 <div class="notice">⚠️ Не загружайте OTP-коды, пароли 2FA или чужие учётные данные. Проверка выполняется через Telegram-бота и не требует передачи секретов.</div><button class="primary" id="publishBtn">Опубликовать товар</button><div id="publishMessage" class="delivery-message hidden"></div></section>
 <section id="orders" class="panel hidden"><div class="empty">🔐 Войдите в Market, чтобы видеть сделки.</div></section>
+<section id="adminModal" class="modal-backdrop hidden" aria-hidden="true">
+  <div class="rules-modal auth-modal">
+    <button class="modal-close" id="closeAdmin" aria-label="Закрыть">×</button>
+    <div class="eyebrow">OWNER PANEL</div>
+    <h2>Вход в панель владельца</h2>
+    <p class="muted">Панель доступна только по паролю.</p>
+    <label>Пароль<input id="adminPassword" type="password" autocomplete="current-password" placeholder="Введите пароль"></label>
+    <button class="primary" id="adminSubmit">Войти в панель</button>
+    <div id="adminMessage" class="delivery-message hidden"></div>
+  </div>
+</section>
 <section id="owner" class="owner-page hidden">
   <div class="owner-head"><div><div class="eyebrow">OWNER PANEL</div><h2>Панель владельца</h2><p>Реальная статистика магазина из базы заказов.</p></div><button class="secondary" id="ownerRefresh">Обновить</button></div>
   <div class="owner-stats">
