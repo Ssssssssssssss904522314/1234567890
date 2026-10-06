@@ -202,6 +202,10 @@ document.querySelector("#publishBtn")?.addEventListener("click",()=>{
  publishListing();
 });
 
+async function loadAdminSupport(){
+ try{const r=await fetch("/api/admin/chats/support/messages");const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось загрузить поддержку");const box=document.querySelector("#adminSupportMessages");box.innerHTML=(j.items||[]).map(m=>`<div class="chat-message ${m.user_id==="admin"?"mine":"support"}"><div>${esc(m.message)}</div><time>${esc(m.user_id)} · ${new Date(m.created_at).toLocaleString("ru-RU")}</time></div>`).join("")||'<div class="empty">Сообщений пока нет.</div>';box.scrollTop=box.scrollHeight}catch(e){const b=document.querySelector("#adminSupportMessages");if(b)b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}
+}
+document.querySelector("#adminSupportForm")?.addEventListener("submit",async e=>{e.preventDefault();const input=document.querySelector("#adminSupportInput"),message=input.value.trim();if(!message)return;input.disabled=true;try{const r=await fetch("/api/admin/chats/support/messages",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({message})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось отправить");input.value="";await loadAdminSupport()}catch(e){alert(e.message)}finally{input.disabled=false;input.focus()}});
 async function loadOwnerPanel(){
  try{
   const [sr,or]=await Promise.all([fetch("/api/owner/stats"),fetch("/api/owner/orders")]);
@@ -214,6 +218,7 @@ async function loadOwnerPanel(){
   document.querySelector("#ownerRefunds").textContent=Number(s.refunds||0);
   document.querySelector("#ownerRefundStars").textContent=Number(s.refunded_stars||0)+" ⭐";
   document.querySelector("#ownerNet").textContent=Number(s.net_stars||0)+" ⭐";
+  await loadAdminSupport();
   const list=document.querySelector("#ownerOrderList");
   const items=oj.items||[];
   list.innerHTML=items.length?items.map(o=>{
