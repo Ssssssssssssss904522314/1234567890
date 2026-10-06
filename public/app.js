@@ -159,7 +159,16 @@ async function loadOwnerPanel(){
   document.querySelector("#ownerNet").textContent=Number(s.net_stars||0)+" ⭐";
   const list=document.querySelector("#ownerOrderList");
   const items=oj.items||[];
-  list.innerHTML=items.length?items.map(o=>`<div class="owner-order"><div><b>#${esc(o.id.slice(-8))}</b><span>${esc(o.seller_handle||"—")} · ${new Date(o.created_at).toLocaleString("ru-RU")}</span></div><strong>${Number(o.amount_stars||0)} ⭐</strong><em class="${o.status==="refunded"?"refund":"paid"}">${o.status==="refunded"?"Возврат":"Оплачено"}</em></div>`).join(""):'<div class="empty">Оплаченных заказов пока нет.</div>';
+  list.innerHTML=items.length?items.map(o=>{
+ const labels={pending:"Ожидает оплаты",paid:"Оплачено",delivery:"Выдача",completed:"Завершено",cancelled:"Отменено",refund_requested:"Запрос возврата",disputed:"Жалоба",refunded:"Возвращено"};
+ const cls=(o.status==="refunded"||o.status==="cancelled")?"refund":(o.status==="refund_requested"||o.status==="disputed")?"warn":"paid";
+ const action=(o.status==="refund_requested"||o.status==="disputed")?'<button class="danger owner-refund" data-refund="'+esc(o.id)+'">Вернуть Stars</button>':"";
+ return `<div class="owner-order"><div><b>#${esc(o.id.slice(-8))}</b><span>${esc(o.seller_handle||"—")} · ${new Date(o.created_at).toLocaleString("ru-RU")}</span>${o.refund_reason?'<span>Возврат: '+esc(o.refund_reason)+'</span>':""}${o.complaint_reason?'<span>Жалоба: '+esc(o.complaint_reason)+'</span>':""}</div><strong>${Number(o.amount_stars||0)} ⭐</strong><em class="${cls}">${labels[o.status]||esc(o.status)}</em>${action}</div>`;
+}).join(""):'<div class="empty">Сделок пока нет.</div>';
+ document.querySelectorAll(".owner-refund").forEach(b=>b.addEventListener("click",async()=>{
+  if(!confirm("Вернуть покупателю Stars по этой сделке?"))return;
+  try{const rr=await fetch("/api/owner/orders/"+encodeURIComponent(b.dataset.refund)+"/refund",{method:"POST"});const jj=await rr.json();if(!rr.ok)throw new Error(jj.error||"Возврат не выполнен");await loadOwnerPanel()}catch(e){alert(e.message)}
+ }));
  }catch(e){localStorage.removeItem("ownerPanelKey");document.querySelector("#ownerOrderList").innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
 }
 document.querySelector("#ownerRefresh")?.addEventListener("click",loadOwnerPanel);
