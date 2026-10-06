@@ -19,7 +19,7 @@
 </section>
 <section class="toolbar"><div class="search"><span>⌕</span><input id="search" placeholder="Поиск по товарам и юзернеймам"></div><div class="chips"><button class="chip active">Все</button><button class="chip">Юзернеймы</button><button class="chip">Каналы</button><button class="chip">Группы</button><button class="chip">Боты</button></div></section>
 <section id="catalog" class="grid"></section>
-<section id="sell" class="panel hidden"><div class="panel-head"><div><div class="eyebrow">SELL</div><h2>Выставить товар</h2></div></div><div class="form-grid"><label>Название<input id="sellTitle" placeholder="Например: @example"></label><label>Категория<select id="sellCategory"><option>Юзернейм</option><option>Канал</option><option>Группа</option><option>Бот</option><option>Другое</option></select></label><label>Цена в Telegram Stars<input id="sellPrice" type="number" min="1" placeholder="100"></label><label>Выдача<select id="sellDelivery"><option>Безопасная автоматизированная выдача</option><option>Ручная выдача</option></select></label><label class="wide">Описание<textarea id="sellDescription" placeholder="Опишите товар, ограничения и условия передачи"></textarea></label></div><label>Ваш Telegram username<input id="sellSeller" placeholder="@seller"></label><div class="notice">⚠️ Не загружайте OTP-коды, пароли 2FA или чужие учётные данные. Проверка владения и выдача будут построены без хранения таких секретов.</div><button class="primary" id="publishBtn">Опубликовать товар</button><div id="publishMessage" class="delivery-message hidden"></div></section>
+<section id="sell" class="panel hidden"><div class="panel-head"><div><div class="eyebrow">SELL</div><h2>Выставить товар</h2></div></div><div class="form-grid"><label>Название<input id="sellTitle" placeholder="Например: @example"></label><label>Категория<select id="sellCategory"><option>Юзернейм</option><option>Telegram-аккаунт</option><option>Канал</option><option>Группа</option><option>Бот</option><option>Другое</option></select></label><label>Цена в Telegram Stars<input id="sellPrice" type="number" min="1" placeholder="100"></label><label>Выдача<select id="sellDelivery"><option>Безопасная автоматизированная выдача</option><option>Ручная выдача</option></select></label><label class="wide">Описание<textarea id="sellDescription" placeholder="Опишите товар, ограничения и условия передачи"></textarea></label></div><label>Ваш Telegram username<input id="sellSeller" placeholder="@seller"></label><div class="notice">⚠️ Не загружайте OTP-коды, пароли 2FA или чужие учётные данные. Проверка владения и выдача будут построены без хранения таких секретов.</div><button class="primary" id="publishBtn">Опубликовать товар</button><div id="publishMessage" class="delivery-message hidden"></div></section>
 <section id="orders" class="panel hidden"><div class="empty">🔐 Войдите через Telegram, чтобы видеть сделки.</div></section>
 <section id="owner" class="owner-page hidden">
   <div class="owner-head"><div><div class="eyebrow">OWNER PANEL</div><h2>Панель владельца</h2><p>Реальная статистика магазина из базы заказов.</p></div><button class="secondary" id="ownerRefresh">Обновить</button></div>
@@ -63,6 +63,24 @@
   </div>
 </section>
 </main>
+<!-- Telegram account rules -->
+<section id="accountRulesModal" class="modal-backdrop hidden" aria-hidden="true">
+  <div class="rules-modal">
+    <button class="modal-close" id="closeRules" aria-label="Закрыть">×</button>
+    <div class="eyebrow">TELEGRAM ACCOUNT MARKET</div>
+    <h2>Правила продажи Telegram-аккаунтов</h2>
+    <div class="rules-scroll">
+      <div class="rule"><b>1. Только ваш аккаунт</b><span>Размещать можно только аккаунт, которым вы вправе распоряжаться.</span></div>
+      <div class="rule"><b>2. Никаких секретов</b><span>Маркет не принимает Telegram OTP, пароль 2FA, cookie, API hash, session-файлы или иные ключи доступа.</span></div>
+      <div class="rule"><b>3. Честное описание</b><span>Указывайте реальное состояние аккаунта, ограничения и доступные функции.</span></div>
+      <div class="rule"><b>4. Украденные аккаунты запрещены</b><span>Аккаунты, полученные через взлом, фишинг, перехват кодов или обман, запрещены.</span></div>
+      <div class="rule"><b>5. Безопасная передача</b><span>Не передавайте секретные коды через чат маркета.</span></div>
+      <div class="rule"><b>6. Споры</b><span>При споре маркет может приостановить сделку до проверки сведений.</span></div>
+    </div>
+    <label class="rules-check"><input type="checkbox" id="rulesAccepted"> <span>Я прочитал(а) и согласен(на) с правилами продажи Telegram-аккаунтов</span></label>
+    <button class="primary rules-submit" id="acceptRules" disabled>Принять и продолжить</button>
+  </div>
+</section>
 <footer>Telegram Market · Безопасная торговая площадка цифровых активов</footer>
 <script src="/app.js"></script>
 </body></html>
