@@ -9,6 +9,13 @@ async function init(){
   `CREATE TABLE IF NOT EXISTS users(
    id text primary key,name text unique not null,password_hash text not null,created_at timestamptz default now()
   )`,
+  `CREATE TABLE IF NOT EXISTS chats(
+   id text primary key,type text not null,name text not null,created_at timestamptz default now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS chat_members(chat_id text not null references chats(id) on delete cascade,user_id text not null,primary key(chat_id,user_id))`,
+  `CREATE TABLE IF NOT EXISTS chat_messages(
+   id text primary key,chat_id text not null references chats(id) on delete cascade,user_id text not null,message text not null,created_at timestamptz default now()
+  )`,
   `CREATE TABLE IF NOT EXISTS listings(
    id text primary key,title text not null,category text not null,price_stars integer not null,
    seller_handle text not null,description text default '',delivery_mode text default 'manual',
@@ -72,8 +79,13 @@ async function byPayload(payload){
  if(!pool)return memory.orders.find(x=>x.payload===payload);
  return (await pool.query("SELECT * FROM orders WHERE payload=$1",[payload])).rows[0];
 }
+async function userOrders(userId){if(!pool)return memory.orders.filter(x=>String(x.buyer_user_id)===String(userId)).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));return (await pool.query("SELECT o.*,l.title,l.category FROM orders o LEFT JOIN listings l ON l.id=o.listing_id WHERE o.buyer_user_id=$1 ORDER BY o.created_at DESC",[String(userId)])).rows}
+async function ensureSupportChat(userId){if(!pool){let c=memory.chats?.find(x=>x.type==="support");if(!c){memory.chats=memory.chats||[];c={id:"support",type:"support",name:"Поддержка",created_at:new Date().toISOString()};memory.chats.push(c)}memory.chat_members=memory.chat_members||[];if(!memory.chat_members.some(x=>x.chat_id===c.id&&x.user_id===String(userId)))memory.chat_members.push({chat_id:c.id,user_id:String(userId)});return c}let c=(await pool.query("SELECT * FROM chats WHERE type='support' LIMIT 1")).rows[0];if(!c)c=(await pool.query("INSERT INTO chats(id,type,name) VALUES($1,'support','Поддержка') RETURNING *",["chat_support"])).rows[0];await pool.query("INSERT INTO chat_members(chat_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[c.id,String(userId)]);return c}
+async function chats(userId){const support=await ensureSupportChat(userId);if(!pool)return [support];return (await pool.query("SELECT c.*, (SELECT message FROM chat_messages m WHERE m.chat_id=c.id ORDER BY m.created_at DESC LIMIT 1) last_message FROM chats c JOIN chat_members cm ON cm.chat_id=c.id WHERE cm.user_id=$1 ORDER BY CASE WHEN c.type='support' THEN 0 ELSE 1 END,c.created_at",[String(userId)])).rows}
+async function chatMessages(chatId,userId){if(!pool)return (memory.chat_messages||[]).filter(x=>x.chat_id===chatId).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));const member=await pool.query("SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2",[chatId,String(userId)]);if(!member.rowCount)return null;return (await pool.query("SELECT * FROM chat_messages WHERE chat_id=$1 ORDER BY created_at ASC",[chatId])).rows}
+async function sendChatMessage(chatId,userId,message){const msg=String(message||"").trim().slice(0,4000);if(!msg)return null;if(!pool){memory.chat_messages=memory.chat_messages||[];const m={id:id("msg"),chat_id:chatId,user_id:String(userId),message:msg,created_at:new Date().toISOString()};memory.chat_messages.push(m);return m}const member=await pool.query("SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2",[chatId,String(userId)]);if(!member.rowCount)return null;return (await pool.query("INSERT INTO chat_messages(id,chat_id,user_id,message) VALUES($1,$2,$3,$4) RETURNING *",[id("msg"),chatId,String(userId),msg])).rows[0]}
 async function cancelOrder(idv,buyerId){
- if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&o.status==="pending"){o.status="cancelled";o.cancelled_at=new Date().toISOString();}return o}
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_user_id)===String(buyerId));if(o&&o.status==="pending"){o.status="cancelled";o.cancelled_at=new Date().toISOString();}return o}
  return (await pool.query("UPDATE orders SET status='cancelled',cancelled_at=now() WHERE id=$1 AND buyer_user_id=$2 AND status='pending' RETURNING *",[idv,String(buyerId)])).rows[0];
 }
 async function requestRefund(idv,buyerId,reason){
@@ -103,4 +115,4 @@ async function createVerification(){const nonce=id("verify");if(!pool){const row
 async function getVerification(nonce){if(!pool)return memory.verifications.find(x=>x.nonce===nonce);return (await pool.query("SELECT * FROM account_verifications WHERE nonce=$1",[nonce])).rows[0]}
 async function completeVerification(nonce,userId){if(!pool){const row=memory.verifications.find(x=>x.nonce===nonce);if(row){row.telegram_user_id=String(userId);row.status="verified";row.verified_at=new Date().toISOString()}return row}return (await pool.query("UPDATE account_verifications SET telegram_user_id=$2,status='verified',verified_at=now() WHERE nonce=$1 AND status='pending' RETURNING *",[nonce,String(userId)])).rows[0]}
 async function purgeVerifications(){if(pool)await pool.query("DELETE FROM account_verifications WHERE created_at < now()-interval '15 minutes'")}
-module.exports={pool,init,createUser,findUserByName,listings,listing,addListing,createOrder,order,byPayload,markPaid,cancelOrder,requestRefund,openComplaint,completeOrder,markRefunded,createVerification,getVerification,completeVerification,purgeVerifications};
+module.exports={pool,init,createUser,findUserByName,userOrders,ensureSupportChat,chats,chatMessages,sendChatMessage,listings,listing,addListing,createOrder,order,byPayload,markPaid,cancelOrder,requestRefund,openComplaint,completeOrder,markRefunded,createVerification,getVerification,completeVerification,purgeVerifications};
