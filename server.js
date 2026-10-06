@@ -8,6 +8,7 @@ const PORT=process.env.PORT||10000;
 const BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||"";
 const WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||"";
 const SITE_URL=process.env.MARKET_SITE_URL||"";
+const SESSION_SECRET=process.env.MARKET_SESSION_SECRET||crypto.randomBytes(32).toString("hex");
 const OWNER_TELEGRAM_USERNAME=(process.env.OWNER_TELEGRAM_USERNAME||"wswkkk").replace(/^@/,"").toLowerCase();
 
 app.use(express.json({limit:"2mb"}));
@@ -21,29 +22,41 @@ async function tg(method,body){
 }
 
 app.get("/api/health",async(req,res)=>res.json({ok:true,service:"telegram-digital-market",database:!!db.pool,payments:!!BOT_TOKEN}));
-app.get("/auth/login",async(req,res)=>{
- if(!BOT_TOKEN)return res.status(503).send("TELEGRAM_MARKET_BOT_TOKEN не настроен.");
+function setSession(res,u){const payload=Buffer.from(JSON.stringify({id:u.id,name:u.name,exp:Date.now()+604800000})).toString("base64url");const sig=crypto.createHmac("sha256",SESSION_SECRET).update(payload).digest("base64url");res.setHeader("Set-Cookie","market_session="+payload+"."+sig+"; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax");}
+app.post("/api/auth/register",async(req,res)=>{
+ const name=String(req.body?.name||"").trim();const password=String(req.body?.password||"");
+ if(!/^[A-Za-zА-Яа-яЁё0-9_.-]{3,32}$/.test(name))return res.status(400).json({error:"Имя: 3–32 символа, только буквы, цифры, _ . -"});
+ if(password.length<6)return res.status(400).json({error:"Пароль должен содержать минимум 6 символов"});
  try{
-  const bot=(await tg("getMe",{})).username;
-  if(!bot)return res.status(503).send("У бота нет username.");
-  const site=SITE_URL||("https://"+req.get("host"));
-  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Вход через Telegram</title></head><body style="font-family:Arial;text-align:center;padding:50px"><h2>Вход через Telegram</h2><p>Авторизуйтесь для входа в магазин.</p><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-login="${bot}" data-size="large" data-auth-url="${site}/auth/telegram" data-request-access="write"></script><p><a href="/">Вернуться в магазин</a></p></body></html>`);
- }catch(e){res.status(500).send("Ошибка Telegram Login: "+e.message)}
+  if(await db.findUserByName(name))return res.status(409).json({error:"Пользователь с таким именем уже существует"});
+  const password_hash=crypto.scryptSync(password,crypto.randomBytes(16),64).toString("hex")+":"+crypto.randomBytes(16).toString("hex");
+  const salt=password_hash.split(":")[1];const hash=crypto.scryptSync(password,salt,64).toString("hex");
+  const user=await db.createUser({name,password_hash:hash+":"+salt});setSession(res,user);res.json({ok:true,user:{id:user.id,name:user.name}});
+ }catch(e){res.status(500).json({error:e.message})}
 });
-app.get("/auth/telegram",(req,res)=>{if(!BOT_TOKEN)return res.status(503).send("TELEGRAM_MARKET_BOT_TOKEN не настроен.");const q={...req.query};const hash=String(q.hash||"");delete q.hash;const check=Object.keys(q).sort().map(k=>k+"="+q[k]).join("\\n");const secret=crypto.createHash("sha256").update(BOT_TOKEN).digest();const expected=crypto.createHmac("sha256",secret).update(check).digest("hex");if(!hash||hash!==expected)return res.status(403).send("Не удалось проверить авторизацию Telegram.");if(Math.floor(Date.now()/1000)-Number(q.auth_date||0)>86400)return res.status(403).send("Авторизация устарела.");const payload=Buffer.from(JSON.stringify({id:String(q.id),username:String(q.username||"").toLowerCase(),name:String(q.first_name||""),exp:Date.now()+604800000})).toString("base64url");const sig=crypto.createHmac("sha256",BOT_TOKEN).update(payload).digest("base64url");res.setHeader("Set-Cookie","market_session="+payload+"."+sig+"; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax");res.redirect("/?login=ok");});
-app.get("/api/auth/me",(req,res)=>{const u=getSession(req);res.json({authenticated:!!u,user:u?{id:u.id,username:u.username,name:u.name}:null,isOwner:!!(u&&u.username===OWNER_TELEGRAM_USERNAME)});});
+app.post("/api/auth/login",async(req,res)=>{
+ const name=String(req.body?.name||"").trim();const password=String(req.body?.password||"");
+ try{
+  const user=await db.findUserByName(name);if(!user)return res.status(401).json({error:"Неверное имя или пароль"});
+  const parts=String(user.password_hash||"").split(":");if(parts.length!==2)return res.status(401).json({error:"Неверное имя или пароль"});
+  const hash=crypto.scryptSync(password,parts[1],64).toString("hex");if(hash.length!==parts[0].length||!crypto.timingSafeEqual(Buffer.from(hash),Buffer.from(parts[0])))return res.status(401).json({error:"Неверное имя или пароль"});
+  setSession(res,user);res.json({ok:true,user:{id:user.id,name:user.name}});
+ }catch(e){res.status(500).json({error:e.message})}
+});
+app.get("/auth/login",(req,res)=>res.redirect("/"));
+app.get("/api/auth/me",(req,res)=>{const u=getSession(req);res.json({authenticated:!!u,user:u?{id:u.id,username:u.username,name:u.name}:null,isOwner:!!(u&&u.name.toLowerCase()===OWNER_TELEGRAM_USERNAME)});});
 app.post("/api/auth/logout",(req,res)=>{res.setHeader("Set-Cookie","market_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax");res.json({ok:true});});
 
 function getCookie(req,name){const parts=(req.headers.cookie||"").split(";");for(const p of parts){const x=p.trim();if(x.startsWith(name+"="))return decodeURIComponent(x.slice(name.length+1));}return "";
 }
-function getSession(req){try{const raw=getCookie(req,"market_session");if(!raw||!BOT_TOKEN)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",BOT_TOKEN).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}}
+function getSession(req){try{const raw=getCookie(req,"market_session");if(!raw)return null;const a=raw.split(".");if(a.length!==2)return null;const expected=crypto.createHmac("sha256",SESSION_SECRET).update(a[0]).digest("base64url");if(a[1]!==expected)return null;const u=JSON.parse(Buffer.from(a[0],"base64url").toString());if(!u.exp||u.exp<Date.now())return null;return u;}catch(e){return null;}}
 function ownerAuth(req,res){const u=getSession(req);if(u&&u.username===OWNER_TELEGRAM_USERNAME)return null;return res.status(401).json({error:"Нет доступа к панели владельца"});}
 app.get("/api/owner/stats",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
 app.get("/api/owner/orders",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
 
 
 app.post("/api/account-verification/start",async(req,res)=>{
- const u=getSession(req); if(!u)return res.status(401).json({error:"Сначала войдите через Telegram"});
+ const u=getSession(req); if(!u)return res.status(401).json({error:"Сначала войдите в Market"});
  if(!BOT_TOKEN)return res.status(503).json({error:"TELEGRAM_MARKET_BOT_TOKEN не настроен"});
  try{const v=await db.createVerification();const bot=(await tg("getMe",{})).username;res.json({nonce:v.nonce,bot,link:"https://t.me/"+bot+"?start=verify_"+encodeURIComponent(v.nonce),expires_in:900})}catch(e){res.status(500).json({error:e.message})}
 });
@@ -62,10 +75,10 @@ app.post("/api/listings",async(req,res)=>{
   const u=getSession(req);
   let verified_telegram_id=null,verified_at=null;
   if(category==="Telegram-аккаунт"){
-   if(!u)return res.status(401).json({error:"Для продажи Telegram-аккаунта войдите через Telegram"});
+   if(!u)return res.status(401).json({error:"Для продажи Telegram-аккаунта войдите в Market"});
    const v=verification_nonce?await db.getVerification(verification_nonce):null;
    if(!v||v.status!=="verified")return res.status(400).json({error:"Сначала подтвердите, что аккаунт активен"});
-   if(String(v.telegram_user_id)!==String(u.id))return res.status(403).json({error:"Подтверждён другой Telegram-аккаунт"});
+   
    verified_telegram_id=String(v.telegram_user_id);verified_at=v.verified_at;
   }
   res.status(201).json({item:await db.addListing({title,category,price_stars:Number(price_stars),seller_handle,description,delivery_mode,verified_telegram_id,verified_at})})
@@ -79,7 +92,7 @@ app.post("/api/orders",async(req,res)=>{
  if(!listing)return res.status(404).json({error:"Товар не найден"});
  if(!BOT_TOKEN)return res.status(503).json({error:"Платежи не настроены: добавьте TELEGRAM_MARKET_BOT_TOKEN в Render"});
  try{
-  const order=await db.createOrder({listing_id:listing.id,buyer_telegram_id:String(u.id),seller_handle:listing.seller_handle,amount_stars:listing.price_stars});
+  const order=await db.createOrder({listing_id:listing.id,buyer_user_id:String(u.id),seller_handle:listing.seller_handle,amount_stars:listing.price_stars});
   const invoice=await tg("createInvoiceLink",{title:listing.title.slice(0,32),description:(listing.description||"Цифровой товар").slice(0,255),payload:order.payload,currency:"XTR",prices:[{label:listing.title.slice(0,32),amount:listing.price_stars}],start_parameter:"order_"+order.id});
   if(db.pool) await db.pool.query("UPDATE orders SET invoice_url=$2 WHERE id=$1",[order.id,invoice]); else order.invoice_url=invoice;
   res.json({order_id:order.id,invoice_url:invoice,status:"pending"});
@@ -87,7 +100,7 @@ app.post("/api/orders",async(req,res)=>{
 });
 
 app.post("/api/orders/:id/cancel",async(req,res)=>{
- const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
+ const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите в Market"});
  try{const o=await db.cancelOrder(req.params.id,u.id);if(!o)return res.status(400).json({error:"Заказ уже оплачен или его нельзя отменить"});res.json({ok:true,order:o})}catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/orders/:id/refund",async(req,res)=>{
@@ -121,7 +134,7 @@ app.get("/api/orders/:id",async(req,res)=>{
  const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите через Telegram"});
  const o=await db.order(req.params.id);
  if(!o)return res.status(404).json({error:"Заказ не найден"});
- if(String(o.buyer_telegram_id)!==String(u.id)&&u.username!==OWNER_TELEGRAM_USERNAME)return res.status(403).json({error:"Нет доступа к этой сделке"});
+ if(String(o.buyer_user_id)!==String(u.id)&&u.name.toLowerCase()!==OWNER_TELEGRAM_USERNAME)return res.status(403).json({error:"Нет доступа к этой сделке"});
  res.json({order:o});
 });
 
