@@ -11,8 +11,23 @@ async function loadListings(){try{const r=await fetch("/api/listings");const j=a
 loadListings();
 document.querySelector("#search").addEventListener("input",e=>{const q=e.target.value.toLowerCase().trim();render(products.filter(p=>(p.title+" "+p.category+" "+(p.description||"")).toLowerCase().includes(q)))});
 function view(v){
- ["#catalog",".toolbar",".hero","#sell","#orders","#chats","#purchase","#owner"].forEach(sel=>{const el=document.querySelector(sel);if(!el)return;const home=["#catalog",".toolbar",".hero"].includes(sel);el.classList.toggle("hidden",home?v!=="home":sel==="#sell"?v!=="sell":sel==="#orders"?v!=="orders":v!=="purchase"&&v!=="owner")});
+ const sections={
+  home:["#catalog",".toolbar",".hero"],
+  sell:["#sell"],
+  orders:["#orders"],
+  chats:["#chats"],
+  purchase:["#purchase"],
+  owner:["#owner"]
+ };
+ const visible=new Set(sections[v]||sections.home);
+ ["#catalog",".toolbar",".hero","#sell","#orders","#chats","#purchase","#owner"].forEach(sel=>{
+  const el=document.querySelector(sel);if(el)el.classList.toggle("hidden",!visible.has(sel));
+ });
  document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));
+ if(v==="home")loadListings();
+ if(v==="orders")loadOrders();
+ if(v==="chats")loadChats();
+ if(v==="owner")loadOwnerPanel();
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
 let currentUser=null;
