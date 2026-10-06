@@ -13,6 +13,6 @@ async function stats(){
 }
 async function orders(){
  if(!db.pool) return [];
- return (await db.pool.query("SELECT id,listing_id,seller_handle,amount_stars,status,telegram_charge_id,created_at,paid_at,refunded_at FROM orders WHERE status IN ('paid','refunded') ORDER BY COALESCE(paid_at,created_at) DESC LIMIT 100")).rows;
+ return (await db.pool.query("SELECT id,listing_id,seller_handle,amount_stars,status,telegram_charge_id,buyer_telegram_id,refund_reason,complaint_reason,complaint_status,created_at,paid_at,refunded_at FROM orders ORDER BY COALESCE(paid_at,created_at) DESC LIMIT 100")).rows;
 }
 module.exports={stats,orders};
