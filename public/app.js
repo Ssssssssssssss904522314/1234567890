@@ -1,4 +1,5 @@
 let products=[];
+let currentOrderId=localStorage.getItem("marketOrderId")||"";
 const catalog=document.querySelector("#catalog");
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function render(list=products){
@@ -38,12 +39,13 @@ async function buy(id){
  try{
   const r=await fetch("/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({listing_id:id})});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось создать заказ");
-  localStorage.setItem("marketOrderId",j.order_id);
+  localStorage.setItem("marketOrderId",j.order_id);currentOrderId=j.order_id;
   window.open(j.invoice_url,"_blank","noopener");
   showPurchase(j.order_id,p);
  }catch(e){alert(e.message)}
 }
 function showPurchase(orderId,p){
+ currentOrderId=orderId;localStorage.setItem("marketOrderId",orderId);
  const box=document.querySelector("#purchase");
  box.querySelector(".eyebrow").textContent="PURCHASE #"+orderId.slice(-8);
  box.querySelector("h2").textContent="Ожидается оплата";
@@ -55,12 +57,54 @@ function showPurchase(orderId,p){
  document.querySelector("#deliveryMessage").classList.add("hidden");
  view("purchase");pollOrder(orderId,p);
 }
-async function pollOrder(orderId,p){
- const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent="Проверяем статус платежа…";
- try{const r=await fetch("/api/orders/"+encodeURIComponent(orderId));const j=await r.json();if(j.order?.status==="paid"){document.querySelector("#purchase .status-pill").textContent="● Оплачено";msg.textContent="Платёж подтверждён Telegram. Заказ передан в этап выдачи. Откройте чат сделки для передачи разрешённых данных товара.";document.querySelector("#receiveBtn").textContent="Оплата подтверждена";return}msg.textContent="Платёж ещё не подтверждён. Если вы только что оплатили, подождите несколько секунд и нажмите кнопку снова."}catch(e){msg.textContent="Не удалось проверить заказ."}
+function setDeliveryMessage(text){
+ const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent=text;
 }
-document.querySelector("#sellerChatBtn")?.addEventListener("click",()=>{const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent="Чат сделки будет привязан к Telegram Login продавца после подключения авторизации."});
-document.querySelector("#disputeBtn")?.addEventListener("click",()=>{const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent="Спор создан. Выдача приостанавливается до решения модерации."});
+async function loadCurrentOrder(){
+ if(!currentOrderId)return null;
+ try{const r=await fetch("/api/orders/"+encodeURIComponent(currentOrderId));const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось загрузить сделку");return j.order}catch(e){setDeliveryMessage(e.message);return null}
+}
+async function pollOrder(orderId,p){
+ currentOrderId=orderId;
+ const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent="Проверяем статус сделки…";
+ try{
+  const r=await fetch("/api/orders/"+encodeURIComponent(orderId));const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось проверить заказ");
+  const o=j.order||{};const status=o.status;
+  const labels={pending:"● Ожидается оплата",paid:"● Оплачено",delivery:"● Выдача",completed:"● Завершено",cancelled:"● Отменено",refund_requested:"● Запрошен возврат",disputed:"● Спор открыт",refunded:"● Возвращено"};
+  document.querySelector("#purchase .status-pill").textContent=labels[status]||("● "+status);
+  if(status==="pending"){msg.textContent="Счёт создан. Оплатите его в Telegram Stars или отмените заказ.";return}
+  if(status==="paid"||status==="delivery"){msg.textContent="Платёж подтверждён. После получения товара нажмите «Подтвердить получение». Если возникла проблема — используйте возврат или жалобу.";document.querySelector("#receiveBtn").textContent="Обновить статус";return}
+  if(status==="completed"){msg.textContent="Сделка завершена. Спасибо за покупку.";return}
+  if(status==="cancelled"){msg.textContent="Заказ отменён до оплаты.";return}
+  if(status==="refund_requested"){msg.textContent="Запрос на возврат отправлен владельцу маркета. Ожидайте решения.";return}
+  if(status==="disputed"){msg.textContent="Жалоба открыта. Выдача/завершение сделки приостановлены до рассмотрения.";return}
+  if(status==="refunded"){msg.textContent="Возврат выполнен. Stars возвращены через Telegram.";return}
+  msg.textContent="Текущий статус: "+status;
+ }catch(e){msg.textContent=e.message||"Не удалось проверить заказ."}
+}
+async function orderAction(path,body,message){
+ try{
+  const r=await fetch("/api/orders/"+encodeURIComponent(currentOrderId)+path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body||{})});
+  const j=await r.json();if(!r.ok)throw new Error(j.error||"Операция не выполнена");
+  setDeliveryMessage(j.message||message);await pollOrder(currentOrderId,null);
+ }catch(e){setDeliveryMessage(e.message)}
+}
+document.querySelector("#completeOrderBtn")?.addEventListener("click",()=>orderAction("/complete",{},"Получение подтверждено."));
+document.querySelector("#cancelOrderBtn")?.addEventListener("click",()=>{
+ if(!currentOrderId)return setDeliveryMessage("Сначала откройте сделку.");
+ if(confirm("Отменить заказ? Отмена доступна до подтверждения оплаты."))orderAction("/cancel",{},"Заказ отменён.");
+});
+document.querySelector("#refundOrderBtn")?.addEventListener("click",()=>{
+ if(!currentOrderId)return setDeliveryMessage("Сначала откройте сделку.");
+ const reason=prompt("Причина запроса на возврат:","Товар не получен / проблема с товаром");
+ if(reason!==null)orderAction("/refund",{reason},"Запрос на возврат отправлен.");
+});
+document.querySelector("#sellerChatBtn")?.addEventListener("click",()=>setDeliveryMessage("Чат сделки будет привязан к Telegram Login продавца после подключения авторизации."));
+document.querySelector("#disputeBtn")?.addEventListener("click",()=>{
+ if(!currentOrderId)return setDeliveryMessage("Сначала откройте сделку.");
+ const reason=prompt("Опишите проблему для жалобы:");
+ if(reason&&reason.trim())orderAction("/complaint",{reason:reason.trim()},"Жалоба передана на рассмотрение.");
+});
 const rulesModal=document.querySelector("#accountRulesModal");
 const rulesAccepted=document.querySelector("#rulesAccepted");
 const acceptRules=document.querySelector("#acceptRules");
