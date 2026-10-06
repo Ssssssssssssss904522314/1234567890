@@ -13,3 +13,5 @@
 
 /* Order actions */
 .owner-order{grid-template-columns:1fr auto auto auto}.owner-order em.warn{color:#ffd58a;background:#ffb52b12}.owner-refund{font-size:11px;padding:8px 10px;white-space:nowrap}@media(max-width:560px){.owner-order{grid-template-columns:1fr auto}.owner-refund{grid-column:1/-1;width:max-content}}
+
+.auth-modal{max-width:430px}.auth-modal label{display:grid;gap:7px;margin:12px 0;font-size:13px;font-weight:700}.auth-modal input{width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:inherit;outline:none}.auth-modal input:focus{border-color:rgba(255,255,255,.35)}.auth-switch{width:100%;margin-top:10px}.auth-modal .delivery-message{margin-top:12px}
