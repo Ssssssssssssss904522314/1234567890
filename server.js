@@ -41,14 +41,35 @@ function ownerAuth(req,res){const u=getSession(req);if(u&&u.username===OWNER_TEL
 app.get("/api/owner/stats",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({stats:await owner.stats()})}catch(e){res.status(500).json({error:e.message})}});
 app.get("/api/owner/orders",async(req,res)=>{if(ownerAuth(req,res))return;try{res.json({items:await owner.orders()})}catch(e){res.status(500).json({error:e.message})}});
 
+
+app.post("/api/account-verification/start",async(req,res)=>{
+ const u=getSession(req); if(!u)return res.status(401).json({error:"Сначала войдите через Telegram"});
+ if(!BOT_TOKEN)return res.status(503).json({error:"TELEGRAM_MARKET_BOT_TOKEN не настроен"});
+ try{const v=await db.createVerification();const bot=(await tg("getMe",{})).username;res.json({nonce:v.nonce,bot,link:"https://t.me/"+bot+"?start=verify_"+encodeURIComponent(v.nonce),expires_in:900})}catch(e){res.status(500).json({error:e.message})}
+});
+app.get("/api/account-verification/:nonce",async(req,res)=>{
+ try{const v=await db.getVerification(req.params.nonce);if(!v)return res.status(404).json({error:"Проверка не найдена"});if(new Date(v.created_at).getTime()<Date.now()-900000)return res.json({status:"expired"});res.json({status:v.status,telegram_user_id:v.telegram_user_id||null,verified_at:v.verified_at||null})}catch(e){res.status(500).json({error:e.message})}
+});
+
 app.get("/api/listings",async(req,res)=>{
  try{res.json({items:await db.listings()})}catch(e){res.status(500).json({error:e.message})}
 });
 
 app.post("/api/listings",async(req,res)=>{
- const {title,category,price_stars,seller_handle,description,delivery_mode}=req.body||{};
+ const {title,category,price_stars,seller_handle,description,delivery_mode,verification_nonce}=req.body||{};
  if(!title||!category||!seller_handle||!Number.isInteger(Number(price_stars))||Number(price_stars)<1)return res.status(400).json({error:"Заполните название, категорию, цену в Stars и продавца"});
- try{res.status(201).json({item:await db.addListing({title,category,price_stars:Number(price_stars),seller_handle,description,delivery_mode})})}catch(e){res.status(500).json({error:e.message})}
+ try{
+  const u=getSession(req);
+  let verified_telegram_id=null,verified_at=null;
+  if(category==="Telegram-аккаунт"){
+   if(!u)return res.status(401).json({error:"Для продажи Telegram-аккаунта войдите через Telegram"});
+   const v=verification_nonce?await db.getVerification(verification_nonce):null;
+   if(!v||v.status!=="verified")return res.status(400).json({error:"Сначала подтвердите, что аккаунт активен"});
+   if(String(v.telegram_user_id)!==String(u.id))return res.status(403).json({error:"Подтверждён другой Telegram-аккаунт"});
+   verified_telegram_id=String(v.telegram_user_id);verified_at=v.verified_at;
+  }
+  res.status(201).json({item:await db.addListing({title,category,price_stars:Number(price_stars),seller_handle,description,delivery_mode,verified_telegram_id,verified_at})})
+ }catch(e){res.status(500).json({error:e.message})}
 });
 
 app.post("/api/orders",async(req,res)=>{
@@ -72,6 +93,11 @@ app.get("/api/orders/:id",async(req,res)=>{
 app.post("/api/telegram/payment-webhook",async(req,res)=>{
  if(WEBHOOK_SECRET&&req.get("x-telegram-bot-api-secret-token")!==WEBHOOK_SECRET)return res.sendStatus(403);
  const u=req.body||{};
+ const msg=u.message;
+ const start=String(msg?.text||"").match(/^\/start(?:@\\w+)?\\s+verify_([A-Za-z0-9_]+)$/);
+ if(start&&msg?.from?.id){
+  try{const v=await db.completeVerification(start[1],msg.from.id);if(v)await tg("sendMessage",{chat_id:msg.chat.id,text:"✅ Telegram-аккаунт подтверждён. Вернитесь в Telegram Market — статус проверки обновится автоматически."});}catch(e){console.error("Verification error:",e.message)}
+ }
  const pq=u.pre_checkout_query;
  if(pq){
   try{
@@ -103,4 +129,4 @@ app.use((req,res)=>{
  res.status(404).json({error:"Not found"});
 });
 
-db.init().then(()=>app.listen(PORT,"0.0.0.0",()=>console.log("Marketplace listening on "+PORT+" | db="+!!db.pool+" | payments="+!!BOT_TOKEN))).catch(e=>{console.error(e);process.exit(1)});
+db.init().then(()=>app.listen(PORT,"0.0.0.0",()=>{setInterval(()=>db.purgeVerifications().catch(()=>{}),300000);console.log("Marketplace listening on "+PORT+" | db="+!!db.pool+" | payments="+!!BOT_TOKEN)})).catch(e=>{console.error(e);process.exit(1)});
