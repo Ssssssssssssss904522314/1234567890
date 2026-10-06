@@ -11,7 +11,7 @@ async function loadListings(){try{const r=await fetch("/api/listings");const j=a
 loadListings();
 document.querySelector("#search").addEventListener("input",e=>{const q=e.target.value.toLowerCase().trim();render(products.filter(p=>(p.title+" "+p.category+" "+(p.description||"")).toLowerCase().includes(q)))});
 function view(v){
- ["#catalog",".toolbar",".hero","#sell","#orders","#purchase","#owner"].forEach(sel=>{const el=document.querySelector(sel);if(!el)return;const home=["#catalog",".toolbar",".hero"].includes(sel);el.classList.toggle("hidden",home?v!=="home":sel==="#sell"?v!=="sell":sel==="#orders"?v!=="orders":v!=="purchase"&&v!=="owner")});
+ ["#catalog",".toolbar",".hero","#sell","#orders","#chats","#purchase","#owner"].forEach(sel=>{const el=document.querySelector(sel);if(!el)return;const home=["#catalog",".toolbar",".hero"].includes(sel);el.classList.toggle("hidden",home?v!=="home":sel==="#sell"?v!=="sell":sel==="#orders"?v!=="orders":v!=="purchase"&&v!=="owner")});
  document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
@@ -50,6 +50,7 @@ async function initAuth(){
  try{
   const r=await fetch("/api/auth/me");const j=await r.json();
   currentUser=j.user||null;
+  if(currentUser)loadOrders();
   const seller=document.querySelector("#sellSeller");if(seller)seller.value=currentUser?.name||"";
   const ownerNav=document.querySelector('.nav[data-view="owner"]');if(ownerNav)ownerNav.classList.remove("hidden");
   const btn=document.querySelector("#loginBtn");
@@ -60,6 +61,38 @@ async function initAuth(){
  }catch(e){}
 }
 initAuth();
+async function loadOrders(){
+ const box=document.querySelector("#orders");if(!box)return;
+ if(!currentUser){box.innerHTML='<div class="empty">🔐 Войдите в Market, чтобы видеть сделки.</div>';return}
+ try{
+  const r=await fetch("/api/orders");const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось загрузить сделки");
+  const labels={pending:"Ожидает оплаты",paid:"Оплачено",delivery:"Выдача",completed:"Завершено",cancelled:"Отменено",refund_requested:"Возврат запрошен",disputed:"Жалоба",refunded:"Возвращено"};
+  box.innerHTML=j.items?.length?'<div class="orders-list">'+j.items.map(o=>`<article class="market-order"><div><b>#${esc(o.id.slice(-8))}</b><h3>${esc(o.title||"Товар")}</h3><span>${esc(o.category||"")} · ${Number(o.amount_stars||0)} ⭐</span></div><em>${labels[o.status]||esc(o.status)}</em><button class="secondary order-open" data-order="${esc(o.id)}">Открыть</button></article>`).join("")+'</div>':'<div class="empty">У вас пока нет сделок.</div>';
+  box.querySelectorAll(".order-open").forEach(b=>b.addEventListener("click",async()=>{const o=j.items.find(x=>x.id===b.dataset.order);if(o){currentOrderId=o.id;view("purchase");await pollOrder(o.id,null)}}));
+ }catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}
+}
+let activeChatId=null,chatTimer=null;
+async function loadChats(){
+ const list=document.querySelector("#chatList"),messages=document.querySelector("#chatMessages");if(!list||!messages)return;
+ if(!currentUser){list.innerHTML='<div class="empty">🔐 Войдите в Market, чтобы открыть чаты.</div>';messages.innerHTML='<div class="empty">Войдите в Market.</div>';return}
+ try{
+  const r=await fetch("/api/chats");const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось загрузить чаты");
+  const items=j.items||[];list.innerHTML=items.map((x,i)=>`<button class="chat-item ${i===0?"active":""}" data-chat="${esc(x.id)}"><span class="chat-avatar small">✦</span><span><b>${esc(x.name)}</b><small>${esc(x.last_message||"Напишите нам, если нужна помощь")}</small></span></button>`).join("")||'<div class="empty">Чатов пока нет.</div>';
+  if(items.length&&!activeChatId)activeChatId=items[0].id;
+  list.querySelectorAll(".chat-item").forEach(b=>b.addEventListener("click",()=>{activeChatId=b.dataset.chat;list.querySelectorAll(".chat-item").forEach(x=>x.classList.remove("active"));b.classList.add("active");loadChatMessages()}));
+  await loadChatMessages();
+ }catch(e){list.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}
+}
+async function loadChatMessages(){
+ if(!activeChatId)return;const box=document.querySelector("#chatMessages");if(!box)return;
+ try{const r=await fetch("/api/chats/"+encodeURIComponent(activeChatId)+"/messages");const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось загрузить сообщения");
+  box.innerHTML=(j.items||[]).map(m=>`<div class="chat-message ${String(m.user_id)===String(currentUser?.id)?"mine":"support"}"><div>${esc(m.message)}</div><time>${new Date(m.created_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</time></div>`).join("")||'<div class="empty">Напишите в поддержку — мы ответим здесь.</div>';
+  box.scrollTop=box.scrollHeight;
+ }catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}
+}
+document.querySelector("#chatForm")?.addEventListener("submit",async e=>{e.preventDefault();if(!activeChatId)return;const input=document.querySelector("#chatInput"),message=input.value.trim();if(!message)return;input.disabled=true;try{const r=await fetch("/api/chats/"+encodeURIComponent(activeChatId)+"/messages",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({message})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось отправить");input.value="";await loadChatMessages();await loadChats()}catch(e){alert(e.message)}finally{input.disabled=false;input.focus()}});
+document.querySelector('.nav[data-view="chats"]')?.addEventListener("click",()=>{loadChats();if(chatTimer)clearInterval(chatTimer);chatTimer=setInterval(loadChatMessages,3000)});
+document.querySelector('.nav[data-view="orders"]')?.addEventListener("click",()=>loadOrders());
 async function buy(id){
  const p=products.find(x=>x.id===id);if(!p)return;
  try{
