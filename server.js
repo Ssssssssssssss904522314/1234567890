@@ -77,6 +77,10 @@ app.get("/api/account-verification/:nonce",async(req,res)=>{
  try{const v=await db.getVerification(req.params.nonce);if(!v)return res.status(404).json({error:"Проверка не найдена"});if(new Date(v.created_at).getTime()<Date.now()-900000)return res.json({status:"expired"});res.json({status:v.status,telegram_user_id:v.telegram_user_id||null,verified_at:v.verified_at||null})}catch(e){res.status(500).json({error:e.message})}
 });
 
+app.get("/api/orders",async(req,res)=>{const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите в Market"});try{res.json({items:await db.userOrders(u.id)})}catch(e){res.status(500).json({error:e.message})}});
+app.get("/api/chats",async(req,res)=>{const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите в Market"});try{res.json({items:await db.chats(u.id)})}catch(e){res.status(500).json({error:e.message})}});
+app.get("/api/chats/:id/messages",async(req,res)=>{const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите в Market"});try{const items=await db.chatMessages(req.params.id,u.id);if(!items)return res.status(403).json({error:"Нет доступа"});res.json({items})}catch(e){res.status(500).json({error:e.message})}});
+app.post("/api/chats/:id/messages",async(req,res)=>{const u=getSession(req);if(!u)return res.status(401).json({error:"Войдите в Market"});try{const m=await db.sendChatMessage(req.params.id,u.id,req.body?.message);if(!m)return res.status(400).json({error:"Сообщение не отправлено"});res.json({message:m})}catch(e){res.status(500).json({error:e.message})}});
 app.get("/api/listings",async(req,res)=>{
  try{res.json({items:await db.listings()})}catch(e){res.status(500).json({error:e.message})}
 });
