@@ -15,6 +15,7 @@ function view(v){
  document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
+let currentUser=null;
 let authMode="login";
 const authModal=document.querySelector("#authModal"),authTitle=document.querySelector("#authTitle"),authSubtitle=document.querySelector("#authSubtitle"),authName=document.querySelector("#authName"),authPassword=document.querySelector("#authPassword"),authSubmit=document.querySelector("#authSubmit"),authSwitch=document.querySelector("#authSwitch"),authMessage=document.querySelector("#authMessage");
 function openAuth(mode="login"){authMode=mode;authTitle.textContent=mode==="login"?"Вход в Market":"Регистрация";authSubtitle.textContent=mode==="login"?"Введите имя и пароль.":"Создайте аккаунт: имя + пароль.";authSubmit.textContent=mode==="login"?"Войти":"Создать аккаунт";authSwitch.textContent=mode==="login"?"Нет аккаунта? Зарегистрироваться":"Уже есть аккаунт? Войти";authMessage.classList.add("hidden");authName.value="";authPassword.value="";authModal.classList.remove("hidden");authModal.setAttribute("aria-hidden","false");authName.focus()}
@@ -31,6 +32,8 @@ authPassword?.addEventListener("keydown",e=>{if(e.key==="Enter")authSubmit.click
 async function initAuth(){
  try{
   const r=await fetch("/api/auth/me");const j=await r.json();
+  currentUser=j.user||null;
+  const seller=document.querySelector("#sellSeller");if(seller)seller.value=currentUser?.name||"";
   const ownerNav=document.querySelector('.nav[data-view="owner"]');
   if(ownerNav)ownerNav.classList.toggle("hidden",!j.isOwner);
   const btn=document.querySelector("#loginBtn");
