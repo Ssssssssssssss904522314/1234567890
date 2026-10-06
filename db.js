@@ -89,15 +89,15 @@ async function cancelOrder(idv,buyerId){
  return (await pool.query("UPDATE orders SET status='cancelled',cancelled_at=now() WHERE id=$1 AND buyer_user_id=$2 AND status='pending' RETURNING *",[idv,String(buyerId)])).rows[0];
 }
 async function requestRefund(idv,buyerId,reason){
- if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&["paid","delivery","completed","disputed"].includes(o.status)){o.status="refund_requested";o.refund_requested_at=new Date().toISOString();o.refund_reason=reason||"";}return o}
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_user_id)===String(buyerId));if(o&&["paid","delivery","completed","disputed"].includes(o.status)){o.status="refund_requested";o.refund_requested_at=new Date().toISOString();o.refund_reason=reason||"";}return o}
  return (await pool.query("UPDATE orders SET status='refund_requested',refund_requested_at=now(),refund_reason=$3 WHERE id=$1 AND buyer_user_id=$2 AND status IN ('paid','delivery','completed','disputed') RETURNING *",[idv,String(buyerId),reason||""])).rows[0];
 }
 async function openComplaint(idv,userId,reason){
- if(!pool){const o=memory.orders.find(x=>x.id===idv&&(String(x.buyer_telegram_id)===String(userId)));if(o&&!["cancelled","refunded"].includes(o.status)){o.status="disputed";o.complaint_status="open";o.complaint_created_at=new Date().toISOString();o.complaint_reason=reason||"";}return o}
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_user_id)===String(userId));if(o&&!["cancelled","refunded"].includes(o.status)){o.status="disputed";o.complaint_status="open";o.complaint_created_at=new Date().toISOString();o.complaint_reason=reason||"";}return o}
  return (await pool.query("UPDATE orders SET status='disputed',complaint_status='open',complaint_created_at=now(),complaint_reason=$2 WHERE id=$1 AND buyer_user_id=$3 AND status NOT IN ('cancelled','refunded') RETURNING *",[idv,reason||"",String(userId)])).rows[0];
 }
 async function completeOrder(idv,buyerId){
- if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_telegram_id)===String(buyerId));if(o&&["paid","delivery"].includes(o.status)){o.status="completed";o.resolved_at=new Date().toISOString();}return o}
+ if(!pool){const o=memory.orders.find(x=>x.id===idv&&String(x.buyer_user_id)===String(buyerId));if(o&&["paid","delivery"].includes(o.status)){o.status="completed";o.resolved_at=new Date().toISOString();}return o}
  return (await pool.query("UPDATE orders SET status='completed',resolved_at=now() WHERE id=$1 AND buyer_user_id=$2 AND status IN ('paid','delivery') RETURNING *",[idv,String(buyerId)])).rows[0];
 }
 async function markRefunded(idv){
