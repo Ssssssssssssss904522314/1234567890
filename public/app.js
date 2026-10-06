@@ -15,6 +15,19 @@ function view(v){
  document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
+let authMode="login";
+const authModal=document.querySelector("#authModal"),authTitle=document.querySelector("#authTitle"),authSubtitle=document.querySelector("#authSubtitle"),authName=document.querySelector("#authName"),authPassword=document.querySelector("#authPassword"),authSubmit=document.querySelector("#authSubmit"),authSwitch=document.querySelector("#authSwitch"),authMessage=document.querySelector("#authMessage");
+function openAuth(mode="login"){authMode=mode;authTitle.textContent=mode==="login"?"Вход в Market":"Регистрация";authSubtitle.textContent=mode==="login"?"Введите имя и пароль.":"Создайте аккаунт: имя + пароль.";authSubmit.textContent=mode==="login"?"Войти":"Создать аккаунт";authSwitch.textContent=mode==="login"?"Нет аккаунта? Зарегистрироваться":"Уже есть аккаунт? Войти";authMessage.classList.add("hidden");authName.value="";authPassword.value="";authModal.classList.remove("hidden");authModal.setAttribute("aria-hidden","false");authName.focus()}
+function closeAuth(){authModal.classList.add("hidden");authModal.setAttribute("aria-hidden","true")}
+document.querySelector("#closeAuth")?.addEventListener("click",closeAuth);
+authModal?.addEventListener("click",e=>{if(e.target===authModal)closeAuth()});
+authSwitch?.addEventListener("click",()=>openAuth(authMode==="login"?"register":"login"));
+authSubmit?.addEventListener("click",async()=>{
+ const name=authName.value.trim(),password=authPassword.value;
+ authMessage.classList.remove("hidden");authMessage.textContent=authMode==="login"?"Выполняется вход…":"Создаём аккаунт…";
+ try{const r=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,password})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Ошибка авторизации");closeAuth();await initAuth()}catch(e){authMessage.textContent=e.message}
+});
+authPassword?.addEventListener("keydown",e=>{if(e.key==="Enter")authSubmit.click()});
 async function initAuth(){
  try{
   const r=await fetch("/api/auth/me");const j=await r.json();
@@ -26,8 +39,8 @@ async function initAuth(){
     btn.textContent=j.isOwner?"Администратор":"Выйти";
     btn.onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload()};
    }else{
-    btn.textContent="Войти через Telegram";
-    btn.onclick=()=>location.href="/auth/login";
+    btn.textContent="Войти";
+    btn.onclick=()=>openAuth("login");
    }
   }
   if(j.isOwner)loadOwnerPanel();
