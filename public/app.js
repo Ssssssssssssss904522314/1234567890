@@ -73,8 +73,23 @@ closeRules?.addEventListener("click",closeRulesModal);
 rulesModal?.addEventListener("click",e=>{if(e.target===rulesModal)closeRulesModal()});
 acceptRules?.addEventListener("click",()=>{if(!rulesAccepted.checked)return;localStorage.setItem("telegramAccountRulesAccepted","1");closeRulesModal();if(pendingAccountPublish){pendingAccountPublish=false;publishListing()}});
 
+let checkNonce="";
+const checkBox=document.querySelector("#accountVerifyBox");
+const checkBtn=document.querySelector("#verifyAccountBtn");
+const checkStatus=document.querySelector("#accountVerifyStatus");
+const categoryBox=document.querySelector("#sellCategory");
+function syncCheckBox(){if(checkBox)checkBox.classList.toggle("hidden",categoryBox?.value!=="Telegram-аккаунт")}
+categoryBox?.addEventListener("change",syncCheckBox);syncCheckBox();
+checkBtn?.addEventListener("click",async()=>{
+ try{
+  checkBtn.disabled=true;checkStatus.textContent="Подготовка проверки…";
+  const r=await fetch("/api/account-verification/start",{method:"POST"});const j=await r.json();if(!r.ok)throw new Error(j.error||"Не удалось начать проверку");
+  checkNonce=j.nonce;checkStatus.textContent="Откройте Telegram-бота и нажмите Start с проверяемого аккаунта.";window.open(j.link,"_blank","noopener");
+  const timer=setInterval(async()=>{try{const q=await fetch("/api/account-verification/"+encodeURIComponent(checkNonce));const v=await q.json();if(v.status==="verified"){clearInterval(timer);checkBox.classList.add("verified");checkStatus.textContent="✓ Аккаунт активен и подтверждён";checkBtn.textContent="Подтверждено"}else if(v.status==="expired"){clearInterval(timer);checkStatus.textContent="Проверка истекла — нажмите кнопку ещё раз";checkBtn.disabled=false}}catch(e){}},2000);
+ }catch(e){checkStatus.textContent=e.message;checkBtn.disabled=false}
+});
 async function publishListing(){
- const body={title:document.querySelector("#sellTitle").value.trim(),category:document.querySelector("#sellCategory").value,price_stars:Number(document.querySelector("#sellPrice").value),delivery_mode:document.querySelector("#sellDelivery").value,description:document.querySelector("#sellDescription").value.trim(),seller_handle:document.querySelector("#sellSeller").value.trim()};
+ const body={title:document.querySelector("#sellTitle").value.trim(),category:document.querySelector("#sellCategory").value,price_stars:Number(document.querySelector("#sellPrice").value),delivery_mode:document.querySelector("#sellDelivery").value,verification_nonce:checkNonce||null,description:document.querySelector("#sellDescription").value.trim(),seller_handle:document.querySelector("#sellSeller").value.trim()};
  const msg=document.querySelector("#publishMessage");msg.classList.remove("hidden");
  try{const r=await fetch("/api/listings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw new Error(j.error);msg.textContent=body.category==="Telegram-аккаунт"?"Объявление аккаунта опубликовано. Секретные данные доступа не загружаются в маркет.":"Объявление опубликовано и уже доступно в каталоге.";document.querySelectorAll("#sell input,#sell textarea").forEach(x=>x.value="");await loadListings()}catch(e){msg.textContent=e.message}
 }
