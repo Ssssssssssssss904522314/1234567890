@@ -6,7 +6,10 @@ function id(prefix){return prefix+"_"+crypto.randomBytes(10).toString("hex")}
 async function init(){
  if(!pool)return console.warn("DATABASE_URL is not configured: using temporary memory storage");
  const statements=[
-  `CREATE TABLE IF NOT EXISTS users(\n   id text primary key,name text unique not null,password_hash text not null,created_at timestamptz default now()\n  )`,\n  `CREATE TABLE IF NOT EXISTS listings(
+  `CREATE TABLE IF NOT EXISTS users(
+   id text primary key,name text unique not null,password_hash text not null,created_at timestamptz default now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS listings(
    id text primary key,title text not null,category text not null,price_stars integer not null,
    seller_handle text not null,description text default '',delivery_mode text default 'manual',
    status text default 'active',created_at timestamptz default now(),verified_telegram_id text,verified_at timestamptz
@@ -26,7 +29,8 @@ async function init(){
    complaint_reason text,complaint_status text default 'none',complaint_created_at timestamptz,
    resolved_at timestamptz,refunded_at timestamptz
   )`,
-  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_user_id text`,\n  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_telegram_id text`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_user_id text`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_telegram_id text`,
   `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at timestamptz`,
   `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at timestamptz`,
   `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_reason text`,
@@ -52,10 +56,13 @@ async function addListing(x){
  if(!pool){memory.listings.push(row);return row}
  return (await pool.query("INSERT INTO listings(id,title,category,price_stars,seller_handle,description,delivery_mode,status,verified_telegram_id,verified_at) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9) RETURNING *",[row.id,x.title,x.category,x.price_stars,x.seller_handle,x.description||"",x.delivery_mode||"manual",x.verified_telegram_id||null,x.verified_at||null])).rows[0];
 }
-async function createUser(x){const row={id:id("usr"),...x,created_at:new Date().toISOString()};if(!pool){memory.users.push(row);return row}return (await pool.query("INSERT INTO users(id,name,password_hash) VALUES($1,$2,$3) RETURNING id,name,created_at",[row.id,x.name,x.password_hash])).rows[0]}\nasync function findUserByName(name){if(!pool)return memory.users.find(x=>x.name.toLowerCase()===String(name).toLowerCase());return (await pool.query("SELECT * FROM users WHERE lower(name)=lower($1)",[name])).rows[0]}\n\nasync function createOrder(x){
+async function createUser(x){const row={id:id("usr"),...x,created_at:new Date().toISOString()};if(!pool){memory.users.push(row);return row}return (await pool.query("INSERT INTO users(id,name,password_hash) VALUES($1,$2,$3) RETURNING id,name,created_at",[row.id,x.name,x.password_hash])).rows[0]}
+async function findUserByName(name){if(!pool)return memory.users.find(x=>x.name.toLowerCase()===String(name).toLowerCase());return (await pool.query("SELECT * FROM users WHERE lower(name)=lower($1)",[name])).rows[0]}
+
+async function createOrder(x){
  const row={id:id("ord"),payload:id("pay"),...x,status:"pending",created_at:new Date().toISOString()};
  if(!pool){memory.orders.push(row);return row}
- return (await pool.query("INSERT INTO orders(id,listing_id,buyer_user_id,buyer_telegram_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING *",[row.id,x.listing_id,String(x.buyer_user_id||""),String(x.buyer_telegram_id||""),x.seller_handle,x.amount_stars,row.payload])).rows[0];
+ return (await pool.query("INSERT INTO orders(id,listing_id,buyer_user_id,buyer_telegram_id,seller_handle,amount_stars,payload,status) VALUES($1,$2,$3,$4,$5,$6,$7,'pending') RETURNING *",[row.id,x.listing_id,String(x.buyer_user_id||""),String(x.buyer_telegram_id||""),x.seller_handle,x.amount_stars,row.payload])).rows[0];
 }
 async function order(idv){
  if(!pool)return memory.orders.find(x=>x.id===idv);
