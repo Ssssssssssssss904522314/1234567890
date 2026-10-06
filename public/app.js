@@ -29,24 +29,34 @@ authSubmit?.addEventListener("click",async()=>{
  try{const r=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,password})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Ошибка авторизации");closeAuth();await initAuth()}catch(e){authMessage.textContent=e.message}
 });
 authPassword?.addEventListener("keydown",e=>{if(e.key==="Enter")authSubmit.click()});
+const adminModal=document.querySelector("#adminModal"),adminPassword=document.querySelector("#adminPassword"),adminSubmit=document.querySelector("#adminSubmit"),adminMessage=document.querySelector("#adminMessage");
+function openAdminLogin(){adminMessage?.classList.add("hidden");if(adminPassword)adminPassword.value="";adminModal?.classList.remove("hidden");adminModal?.setAttribute("aria-hidden","false");adminPassword?.focus()}
+function closeAdminLogin(){adminModal?.classList.add("hidden");adminModal?.setAttribute("aria-hidden","true")}
+document.querySelector("#closeAdmin")?.addEventListener("click",closeAdminLogin);
+adminModal?.addEventListener("click",e=>{if(e.target===adminModal)closeAdminLogin()});
+async function adminIsAuthenticated(){try{const r=await fetch("/api/admin/me");const j=await r.json();return !!j.authenticated}catch(e){return false}}
+async function openOwnerPanel(){
+ if(!(await adminIsAuthenticated())){openAdminLogin();return}
+ view("owner");await loadOwnerPanel();
+}
+document.querySelector('.nav[data-view="owner"]')?.addEventListener("click",e=>{e.preventDefault();openOwnerPanel()});
+adminSubmit?.addEventListener("click",async()=>{
+ const password=adminPassword?.value||"";
+ adminMessage.classList.remove("hidden");adminMessage.textContent="Проверяем пароль…";
+ try{const r=await fetch("/api/admin/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Ошибка входа");closeAdminLogin();view("owner");await loadOwnerPanel()}catch(e){adminMessage.textContent=e.message}
+});
+adminPassword?.addEventListener("keydown",e=>{if(e.key==="Enter")adminSubmit.click()});
 async function initAuth(){
  try{
   const r=await fetch("/api/auth/me");const j=await r.json();
   currentUser=j.user||null;
   const seller=document.querySelector("#sellSeller");if(seller)seller.value=currentUser?.name||"";
-  const ownerNav=document.querySelector('.nav[data-view="owner"]');
-  if(ownerNav)ownerNav.classList.toggle("hidden",!j.isOwner);
+  const ownerNav=document.querySelector('.nav[data-view="owner"]');if(ownerNav)ownerNav.classList.remove("hidden");
   const btn=document.querySelector("#loginBtn");
   if(btn){
-   if(j.authenticated){
-    btn.textContent=j.isOwner?"Администратор":"Выйти";
-    btn.onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload()};
-   }else{
-    btn.textContent="Войти";
-    btn.onclick=()=>openAuth("login");
-   }
+   if(j.authenticated){btn.textContent="Выйти";btn.onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload()}}
+   else{btn.textContent="Войти";btn.onclick=()=>openAuth("login")}
   }
-  if(j.isOwner)loadOwnerPanel();
  }catch(e){}
 }
 initAuth();
@@ -160,10 +170,8 @@ document.querySelector("#publishBtn")?.addEventListener("click",()=>{
 });
 
 async function loadOwnerPanel(){
- const key=localStorage.getItem("ownerPanelKey");
- const headers=key?{"x-owner-key":key}:{};
  try{
-  const [sr,or]=await Promise.all([fetch("/api/owner/stats",{headers}),fetch("/api/owner/orders",{headers})]);
+  const [sr,or]=await Promise.all([fetch("/api/owner/stats"),fetch("/api/owner/orders")]);
   const sj=await sr.json(),oj=await or.json();
   if(!sr.ok)throw new Error(sj.error||"Нет доступа");
   const s=sj.stats||{};
@@ -185,7 +193,6 @@ async function loadOwnerPanel(){
   if(!confirm("Вернуть покупателю Stars по этой сделке?"))return;
   try{const rr=await fetch("/api/owner/orders/"+encodeURIComponent(b.dataset.refund)+"/refund",{method:"POST"});const jj=await rr.json();if(!rr.ok)throw new Error(jj.error||"Возврат не выполнен");await loadOwnerPanel()}catch(e){alert(e.message)}
  }));
- }catch(e){localStorage.removeItem("ownerPanelKey");document.querySelector("#ownerOrderList").innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+ }catch(e){document.querySelector("#ownerOrderList").innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
 }
 document.querySelector("#ownerRefresh")?.addEventListener("click",loadOwnerPanel);
-document.querySelector('.nav[data-view="owner"]')?.addEventListener("click",loadOwnerPanel);
