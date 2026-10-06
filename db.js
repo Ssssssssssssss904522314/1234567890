@@ -5,35 +5,40 @@ const memory={listings:[],orders:[],verifications:[]};
 function id(prefix){return prefix+"_"+crypto.randomBytes(10).toString("hex")}
 async function init(){
  if(!pool)return console.warn("DATABASE_URL is not configured: using temporary memory storage");
- await pool.query(`CREATE TABLE IF NOT EXISTS listings(
- id text primary key,title text not null,category text not null,price_stars integer not null,
- seller_handle text not null,description text default '',delivery_mode text default 'manual',
- status text default 'active',created_at timestamptz default now(),verified_telegram_id text,verified_at timestamptz
- );
- ALTER TABLE listings ADD COLUMN IF NOT EXISTS verified_telegram_id text;
- ALTER TABLE listings ADD COLUMN IF NOT EXISTS verified_at timestamptz;
- CREATE TABLE IF NOT EXISTS account_verifications(
- nonce text primary key,telegram_user_id text,status text default 'pending',created_at timestamptz default now(),verified_at timestamptz
- );
- CREATE TABLE IF NOT EXISTS orders(
- id text primary key,listing_id text not null references listings(id),buyer_telegram_id text,
- seller_handle text not null,amount_stars integer not null,payload text unique not null,
- invoice_url text,status text default 'pending',telegram_charge_id text,
- created_at timestamptz default now(),paid_at timestamptz,
- cancelled_at timestamptz,refund_requested_at timestamptz,refund_reason text,
- complaint_reason text,complaint_status text default 'none',complaint_created_at timestamptz,
- resolved_at timestamptz,refunded_at timestamptz
- );
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at timestamptz;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at timestamptz;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_reason text;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_reason text;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_status text default 'none';
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_created_at timestamptz;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS resolved_at timestamptz;
- ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at timestamptz;
-`);
+ const statements=[
+  `CREATE TABLE IF NOT EXISTS listings(
+   id text primary key,title text not null,category text not null,price_stars integer not null,
+   seller_handle text not null,description text default '',delivery_mode text default 'manual',
+   status text default 'active',created_at timestamptz default now(),verified_telegram_id text,verified_at timestamptz
+  )`,
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS verified_telegram_id text`,
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS verified_at timestamptz`,
+  `CREATE TABLE IF NOT EXISTS account_verifications(
+   nonce text primary key,telegram_user_id text,status text default 'pending',
+   created_at timestamptz default now(),verified_at timestamptz
+  )`,
+  `CREATE TABLE IF NOT EXISTS orders(
+   id text primary key,listing_id text not null references listings(id),buyer_telegram_id text,
+   seller_handle text not null,amount_stars integer not null,payload text unique not null,
+   invoice_url text,status text default 'pending',telegram_charge_id text,
+   created_at timestamptz default now(),paid_at timestamptz,
+   cancelled_at timestamptz,refund_requested_at timestamptz,refund_reason text,
+   complaint_reason text,complaint_status text default 'none',complaint_created_at timestamptz,
+   resolved_at timestamptz,refunded_at timestamptz
+  )`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_telegram_id text`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at timestamptz`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at timestamptz`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_reason text`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_reason text`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_status text DEFAULT 'none'`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS complaint_created_at timestamptz`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS resolved_at timestamptz`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at timestamptz`
+ ];
+ for(const sql of statements) await pool.query(sql);
 }
+
 async function listings(){
  if(!pool)return memory.listings.filter(x=>x.status==="active");
  return (await pool.query("SELECT * FROM listings WHERE status='active' ORDER BY created_at DESC")).rows;
