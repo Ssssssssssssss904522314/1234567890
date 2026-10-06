@@ -61,12 +61,28 @@ async function pollOrder(orderId,p){
 }
 document.querySelector("#sellerChatBtn")?.addEventListener("click",()=>{const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent="Чат сделки будет привязан к Telegram Login продавца после подключения авторизации."});
 document.querySelector("#disputeBtn")?.addEventListener("click",()=>{const msg=document.querySelector("#deliveryMessage");msg.classList.remove("hidden");msg.textContent="Спор создан. Выдача приостанавливается до решения модерации."});
-document.querySelector("#publishBtn")?.addEventListener("click",async()=>{
+const rulesModal=document.querySelector("#accountRulesModal");
+const rulesAccepted=document.querySelector("#rulesAccepted");
+const acceptRules=document.querySelector("#acceptRules");
+const closeRules=document.querySelector("#closeRules");
+let pendingAccountPublish=false;
+function openRules(){if(rulesModal){rulesModal.classList.remove("hidden");rulesModal.setAttribute("aria-hidden","false")}}
+function closeRulesModal(){if(rulesModal){rulesModal.classList.add("hidden");rulesModal.setAttribute("aria-hidden","true")}}
+rulesAccepted?.addEventListener("change",()=>{acceptRules.disabled=!rulesAccepted.checked});
+closeRules?.addEventListener("click",closeRulesModal);
+rulesModal?.addEventListener("click",e=>{if(e.target===rulesModal)closeRulesModal()});
+acceptRules?.addEventListener("click",()=>{if(!rulesAccepted.checked)return;localStorage.setItem("telegramAccountRulesAccepted","1");closeRulesModal();if(pendingAccountPublish){pendingAccountPublish=false;publishListing()}});
+
+async function publishListing(){
  const body={title:document.querySelector("#sellTitle").value.trim(),category:document.querySelector("#sellCategory").value,price_stars:Number(document.querySelector("#sellPrice").value),delivery_mode:document.querySelector("#sellDelivery").value,description:document.querySelector("#sellDescription").value.trim(),seller_handle:document.querySelector("#sellSeller").value.trim()};
  const msg=document.querySelector("#publishMessage");msg.classList.remove("hidden");
- try{const r=await fetch("/api/listings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw new Error(j.error);msg.textContent="Объявление опубликовано и уже доступно в каталоге.";document.querySelectorAll("#sell input,#sell textarea").forEach(x=>x.value="");await loadListings()}catch(e){msg.textContent=e.message}
+ try{const r=await fetch("/api/listings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw new Error(j.error);msg.textContent=body.category==="Telegram-аккаунт"?"Объявление аккаунта опубликовано. Секретные данные доступа не загружаются в маркет.":"Объявление опубликовано и уже доступно в каталоге.";document.querySelectorAll("#sell input,#sell textarea").forEach(x=>x.value="");await loadListings()}catch(e){msg.textContent=e.message}
+}
+document.querySelector("#publishBtn")?.addEventListener("click",()=>{
+ const category=document.querySelector("#sellCategory").value;
+ if(category==="Telegram-аккаунт" && localStorage.getItem("telegramAccountRulesAccepted")!=="1"){pendingAccountPublish=true;openRules();return}
+ publishListing();
 });
-
 
 async function loadOwnerPanel(){
  const key=localStorage.getItem("ownerPanelKey");
